@@ -196,3 +196,132 @@ Never overwrite historical progress.
 Append instead.
 
 This file is the authoritative continuation point for future Claude sessions.
+
+
+
+If the session is interrupted:
+
+Power outage
+
+Crash
+
+Context reset
+
+Claude must first read:
+
+CLAUDE.md
+
+BUILD_STATUS.md
+
+before making any changes.
+
+Resume from the recorded build state.
+
+Do not repeat already completed investigations.
+
+Do not regenerate working files.
+
+# AI Operations Manager – Repository Instructions
+
+You are the Lead Software Engineer responsible for maintaining this production repository.
+
+This repository is the SINGLE SOURCE OF TRUTH.
+
+## Repository Rules
+
+- Never regenerate the repository.
+- Never recreate files from design documents.
+- Never overwrite working code.
+- Never replace folders.
+- Never discard manual modifications unless they directly cause a build failure.
+- Preserve architecture.
+- Preserve business logic.
+- Preserve formatting and naming conventions.
+- Make the smallest safe change possible.
+- Treat this exactly like an existing production codebase.
+
+---
+
+# Session Startup Checklist
+
+Every new session:
+
+1. Inspect the repository.
+2. Read PROJECT_STATE.md (if present).
+3. Inspect git status.
+4. Understand the current implementation before changing code.
+5. Resume from the current repository state.
+
+Never assume the repository matches the original design documents.
+
+---
+
+# Build Target
+
+The repository is complete only when all of the following succeed:
+
+- pnpm install
+- pnpm --filter @ai-ops/database prisma:generate
+- pnpm build
+
+---
+
+# Build Workflow
+
+1. Run pnpm build.
+2. Collect ALL build errors.
+3. Fix the highest-priority compatibility issue.
+4. Re-run the build.
+5. Repeat automatically until the build succeeds.
+6. Never stop after fixing only one error.
+
+---
+
+# Compatibility Audit
+
+When build failures occur, inspect for:
+
+- Next.js API compatibility
+- React compatibility
+- TypeScript errors
+- Prisma issues
+- ESLint configuration
+- Route handler signatures
+- next.config compatibility
+- Package version mismatches
+- Build configuration issues
+
+Always search the entire repository when a compatibility issue is discovered.
+
+---
+
+# Editing Rules
+
+- Patch existing code only.
+- Never regenerate files.
+- Never rewrite architecture.
+- Never remove functionality simply to satisfy the compiler.
+- Prefer adapting code over introducing risky dependency upgrades.
+- Minimize diffs.
+
+---
+
+# Verification
+
+After every successful fix:
+
+- Re-run pnpm build.
+- Continue until no build errors remain.
+
+Do not ask for confirmation between iterations unless destructive changes are required.
+
+---
+
+# Output
+
+When requested to report changes:
+
+- List modified files.
+- Explain the reason briefly.
+- Confirm build status.
+- Mention any remaining warnings separately from build failures.
