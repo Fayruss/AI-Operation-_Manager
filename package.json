@@ -1,0 +1,26 @@
+{
+  "name": "ai-ops-manager",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@9.7.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "db:migrate": "dotenv -e .env.local -- pnpm --filter @ai-ops/database prisma migrate deploy && dotenv -e .env.local -- pnpm --filter @ai-ops/database run db:apply-sql",
+    "db:generate": "dotenv -e .env.local -- pnpm --filter @ai-ops/database prisma generate",
+    "db:seed": "dotenv -e .env.local -- pnpm --filter @ai-ops/database exec tsx prisma/seed.ts",
+    "db:studio": "dotenv -e .env.local -- pnpm --filter @ai-ops/database prisma studio"
+  },
+  "devDependencies": {
+    "turbo": "^2.1.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.2",
+    "dotenv-cli": "^7.4.2"
+  }
+}

@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design System §2 — Color Palette. Dark is default (§1: "Dark-first, not
+   dark-only"); .light overrides below activate via next-themes' class strategy. */
+@layer base {
+  :root {
+    --background: 240 10% 6%;
+    --surface: 240 8% 10%;
+    --surface-raised: 240 8% 14%;
+    --border: 240 6% 20%;
+    --foreground: 0 0% 98%;
+    --muted-foreground: 240 5% 65%;
+
+    --primary: 250 84% 64%;
+    --primary-foreground: 0 0% 100%;
+
+    --success: 142 71% 45%;
+    --warning: 38 92% 55%;
+    --danger: 0 72% 58%;
+    --info: 199 89% 60%;
+
+    --glass-surface: 255 255 255 / 0.04;
+    --glass-border: 255 255 255 / 0.08;
+
+    --radius: 0.75rem;
+  }
+
+  .light {
+    --background: 0 0% 100%;
+    --surface: 240 20% 98%;
+    --surface-raised: 0 0% 100%;
+    --border: 240 6% 90%;
+    --foreground: 240 10% 8%;
+    --muted-foreground: 240 5% 40%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  /* Design System §10: visible 2px focus ring on all interactive elements, never suppressed. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-background;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    background: rgb(var(--glass-surface));
+    border: 1px solid rgb(var(--glass-border));
+    backdrop-filter: blur(12px);
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+}
+
+/* Design System §9: respect prefers-reduced-motion — disable/instant all transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,55 @@
+AI-Operations-Manager-Test-Plan.md
+
+
+# AI Operations Manager — Test Plan
+ 
+---
+ 
+## 1. Unit Tests (Vitest)
+**Scope**: pure functions, Zod schemas, utility logic (SAD §12).
+- Validation schemas reject malformed input for every API contract (API Contract doc) field-by-field.
+- Risk severity computation logic (given criticality + days-overdue inputs, correct severity band).
+- ROI/time-saved metric calculation (SAD §13.4) — deterministic math, no LLM involvement, fully unit-testable.
+- Confidence-threshold routing logic (does a given confidence correctly route to auto-apply vs. approval-required).
+## 2. Integration Tests
+**Scope**: API routes against a real (test) database.
+- Every endpoint in the API Contract doc: happy path + each documented error code.
+- RLS enforcement: authenticated request from org B cannot read/write org A's rows, for every table in SAD §4.
+- Idempotency-key behavior on task/report creation endpoints.
+- Webhook signature verification (valid/invalid/replayed signatures).
+- Approval-gate idempotency (`ALREADY_DECIDED` on double-approval attempt).
+## 3. End-to-End Tests (Playwright)
+**Scope**: critical user journeys (PRD §3).
+- Journey A (Email → Task): seed test email via webhook simulation → assert task appears on Kanban within timeout.
+- Journey B (Meeting → Action Items): seed transcript → assert linked tasks created.
+- Journey C (Risk → Escalation): seed stale task → trigger risk workflow → assert notification + dashboard signal.
+- Command Center (⌘K): keyboard-only execution of all 7 example commands (SAD §13.2).
+- Kanban keyboard accessibility: reorder a card without a mouse.
+- Auth flow: signup → org creation → login → logout → session expiry redirect.
+## 4. AI Evaluation Tests
+**Scope**: agent output quality — the category most AI-driven platforms under-invest in.
+- **Classifier**: golden set of ≥100 labeled emails (urgency + intent), accuracy ≥90% target (PRD §5), re-run on every `classifier.md` version bump, regression-blocks a deploy if accuracy drops below threshold.
+- **Summarizer**: golden set of transcripts with human-verified action items; measure recall (were real action items captured) and precision (were fabricated ones avoided) separately — precision failures (hallucinated action items) are weighted more heavily since they create false work.
+- **Risk Agent**: synthetic scenarios (known-stale task, known SLA breach) — assert correct severity band, not just "a signal was created."
+- **Report Agent**: assert every claim in generated highlights/risks is traceable to a number present in the input aggregate (automated check: extract numbers from output, verify presence in input).
+- **Chat/Planner grounding eval**: assert `referenced_entities` in every response actually exist and are relevant to the question (no fabricated entity IDs) — this is the test that most directly protects against the Chat Workspace hallucinating.
+- **Reply-Draft tone match**: qualitative review sample (not fully automatable) — spot-check drafts against org voice examples monthly.
+## 5. Security Tests
+- Cross-tenant isolation (see Integration Tests §2, expanded to attempt via every access path: direct API, webhook replay with wrong org context, chat context injection).
+- OAuth token encryption at rest verified (no plaintext tokens in DB dumps).
+- Webhook HMAC verification cannot be bypassed by omitted/malformed signature header.
+- SQL injection / prompt injection: adversarial email content designed to manipulate the Classifier Agent's output (e.g., an email body containing "ignore previous instructions") — assert the agent's structured-output constraint prevents behavior change, tested as part of the AI eval suite.
+- RBAC: every admin-only endpoint tested against a member-role token, expect `403`.
+## 6. Load Tests
+- Webhook ingestion path (Email/Meeting): sustained burst of N concurrent webhook calls, assert queue depth stays bounded and no events are dropped (AI Control Center queue metric, SAD §15).
+- Dashboard load under realistic data volume (10k+ tasks, 5k+ emails) — assert query performance holds via the caching/indexing strategy in SAD §12.
+- Chat Workspace concurrent sessions — assert retrieval latency doesn't degrade unacceptably under load.
+## 7. Multi-Tenant Isolation Tests
+**This category gets dedicated emphasis given the platform's multi-tenant, AI-write-access nature.**
+- Automated nightly job: spin up two synthetic test orgs, attempt cross-org reads/writes across every table and every API endpoint, fail the build/alert if any leak.
+- Memory retrieval isolation: assert `memory_entries` similarity search never returns another org's entries even when embeddings are semantically similar (adversarial test: two orgs with near-identical project names/content).
+- Agent execution isolation: assert an `agent_runs` triggered for org A never has access to org B's context, even via shared n8n workflow execution.
+---
+ 
+*End of Test Plan.*
+ 

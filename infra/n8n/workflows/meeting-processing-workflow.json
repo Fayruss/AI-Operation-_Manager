@@ -1,0 +1,128 @@
+{
+  "name": "Meeting Processing Workflow",
+  "nodes": [
+    {
+      "id": "webhook-trigger",
+      "name": "Transcript Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "meeting-transcript",
+        "responseMode": "responseNode"
+      }
+    },
+    {
+      "id": "call-ingest-endpoint",
+      "name": "POST /api/v1/meetings/ingest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.AIOM_APP_URL }}/api/v1/meetings/ingest?orgId={{ $env.AIOM_ORG_ID }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Signature", "value": "={{ $env.AIOM_MEETING_WEBHOOK_SIGNATURE }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ title: $json.title, transcript: $json.transcript, occurredAt: $json.occurredAt, participantEmails: $json.participantEmails }) }}",
+        "options": {
+          "retry": {
+            "maxTries": 3,
+            "waitBetweenTries": 2000
+          },
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "check-success",
+      "name": "IF: 2xx?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [720, 300],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 300,
+              "operator": { "type": "number", "operation": "lt" }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "respond-success",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [960, 220],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ received: true }) }}"
+      }
+    },
+    {
+      "id": "report-failure",
+      "name": "POST /api/v1/webhooks/n8n/callback (failure)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [960, 400],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.AIOM_APP_URL }}/api/v1/webhooks/n8n/callback",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Signature", "value": "={{ $env.AIOM_N8N_CALLBACK_SIGNATURE }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ orgId: $env.AIOM_ORG_ID, agentName: 'summarizer', triggerSource: 'n8n.meeting_processing_workflow', status: 'failed', error: 'Ingest endpoint returned ' + $json.statusCode }) }}"
+      }
+    },
+    {
+      "id": "respond-failure",
+      "name": "Respond 502",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1200, 400],
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 502,
+        "responseBody": "={{ JSON.stringify({ error: { code: 'UPSTREAM_FAILURE', message: 'Meeting ingestion failed after retries' } }) }}"
+      }
+    }
+  ],
+  "connections": {
+    "Transcript Webhook": {
+      "main": [[{ "node": "POST /api/v1/meetings/ingest", "type": "main", "index": 0 }]]
+    },
+    "POST /api/v1/meetings/ingest": {
+      "main": [[{ "node": "IF: 2xx?", "type": "main", "index": 0 }]]
+    },
+    "IF: 2xx?": {
+      "main": [
+        [{ "node": "Respond 200", "type": "main", "index": 0 }],
+        [{ "node": "POST /api/v1/webhooks/n8n/callback (failure)", "type": "main", "index": 0 }]
+      ]
+    },
+    "POST /api/v1/webhooks/n8n/callback (failure)": {
+      "main": [[{ "node": "Respond 502", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "1"
+}

@@ -1,0 +1,11 @@
+{
+  "phase": 9,
+  "build": "failing",
+  "last_error": "ESLint preset resolution",
+  "completed": [
+    "Prisma",
+    "React",
+    "Route handlers"
+  ],
+  "next": "Fix ESLint resolution"
+}

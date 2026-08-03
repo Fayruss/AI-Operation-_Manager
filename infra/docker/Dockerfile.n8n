@@ -1,0 +1,5 @@
+# Self-hosted n8n (SAD §3.2: "self-hosted via Docker so we control execution
+# time limits and secrets"). No custom workflow logic baked into the image —
+# workflows are imported from infra/n8n/workflows (SAD §10) at runtime,
+# starting Phase 2 when the Email Processing workflow is introduced.
+FROM n8nio/n8n:1.60.1

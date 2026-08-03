@@ -1,0 +1,3 @@
+{
+  "extends": ["@ai-ops/config/eslint-preset.js"]
+}

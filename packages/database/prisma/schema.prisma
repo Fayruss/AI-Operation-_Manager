@@ -1,0 +1,667 @@
+// AI Operations Manager — Prisma schema
+// Phase 1: organizations, users, notifications.
+// Phase 2: Task & Project Core + governance (SAD §2.2, §2.8, §4) — projects,
+// boards, tasks, task_dependencies, task_activity, audit_log.
+// Phase 3: Email Intelligence + Agent Orchestration foundation (SAD §2.1,
+// §2.7, §4, §9, §15) — email_accounts, email_messages, agent_runs.
+// Phase 4: Meeting Intelligence (SAD §2.3, §4, §9.2) — meetings,
+// meeting_action_items.
+// Phase 5: Operations Health & Risk Module (SAD §2.4, §4, §9.3) —
+// risk_signals. `agent_runs.agentName` now also writes `risk`.
+// Phase 6: Reporting Module (SAD §2.5, §4, §9.4) — reports.
+// `agent_runs.agentName` now also writes `report`.
+// Phase 7: Memory Module (SAD §2.6, §4, §8.6, §9, §13.6) — memory_entries
+// (pgvector-backed). `agent_runs.agentName` now also writes `memory`
+// (consolidation + retrieval runs). `risk_signals.resolvedAt` and
+// `projects.updatedAt` are added alongside this phase — both are audit
+// fixes required for Memory Consolidation's windowed queries ("resolved
+// risks / completed projects since last run"), not scope creep: without a
+// timestamp of *when* a risk resolved or a project completed, "high-signal
+// events since last run" (this phase's explicit requirement) can't be
+// computed correctly.
+// Phase 9: Analytics & Differentiation Layer (SAD §13, Implementation
+// Guide Phase 9) — `chat_sessions`/`chat_messages` (SAD §13.11, exactly the
+// schema documented there) for the AI Chat Workspace, now that its owning
+// feature exists. `agent_runs.agentName` now also writes `chat` (the
+// retrieval-orchestrating agent behind `/api/v1/chat`, SAD §13.1).
+// `organizations.roiHourlyCostUsd` supports the Time-Saved/ROI metrics'
+// "derived $ figure using org-configured hourly cost" (SAD §13.4).
+// Tables owned by modules still out of scope (domain_events,
+// agent_corrections, integration_providers) remain intentionally NOT
+// added — CLAUDE.md's "never invent architecture ahead of the docs."
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  // SAD §2.6/§3.2: "pgvector co-located with operational data." Declaring
+  // the extension here (postgresqlExtensions preview feature) means
+  // `prisma migrate dev/deploy` emits `CREATE EXTENSION IF NOT EXISTS
+  // vector` itself, ahead of creating any table that references
+  // `Unsupported("vector(...)")` — no manual pre-migration step needed.
+  extensions = [vector]
+}
+
+enum OrgPlan {
+  free
+  pro
+  enterprise
+}
+
+enum UserRole {
+  owner
+  admin
+  member
+  viewer
+}
+
+enum ProjectStatus {
+  active
+  on_hold
+  completed
+  archived
+}
+
+enum ProjectHealth {
+  on_track
+  at_risk
+  critical
+}
+
+enum BoardType {
+  kanban
+  sprint
+}
+
+enum TaskStatus {
+  backlog
+  todo
+  in_progress
+  in_review
+  done
+  blocked
+}
+
+enum TaskPriority {
+  low
+  medium
+  high
+  urgent
+}
+
+// SAD §4 `tasks.source` — email/meeting/ai_risk values are schema-complete
+// per the documented shape even though those producing modules (Email/Meeting
+// Intelligence, Risk Agent) are out of scope until Phase 3+; only `manual`
+// is actually written to by this phase's API.
+enum TaskSource {
+  manual
+  email
+  meeting
+  ai_risk
+}
+
+enum ActorType {
+  user
+  ai_agent
+  system
+}
+
+// SAD §4 `email_accounts`/`email_messages` — Email Intelligence Module (§2.1).
+enum EmailProvider {
+  gmail
+  outlook
+}
+
+enum EmailUrgency {
+  low
+  medium
+  high
+  critical
+}
+
+enum EmailIntent {
+  task
+  question
+  fyi
+  complaint
+  other
+}
+
+enum EmailStatus {
+  unprocessed
+  processed
+  archived
+}
+
+// SAD §4/§9/§15 `agent_runs` — Agent Orchestration Module (§2.7). Only the
+// `classifier` agent is active in this phase; the enum is schema-complete
+// per the documented shape so later agents (summarizer/risk/report/reply_draft)
+// don't require a migration, matching the Phase 1/2 precedent of declaring
+// full documented enums ahead of their producing feature landing.
+enum AgentName {
+  classifier
+  summarizer
+  risk
+  report
+  reply_draft
+  // SAD §8.6/§2.6 Memory Consolidation workflow + §13.1 retrieval calls — batched like `risk` (n8n Workflow Spec §6: "single agent_runs summary row per nightly run").
+  memory
+  // SAD §13.1 AI Chat Workspace — "a retrieval-orchestrating agent," one run per turn (`POST /api/v1/chat`).
+  chat
+}
+
+enum AgentRunStatus {
+  queued
+  running
+  success
+  failed
+  awaiting_approval
+}
+
+// SAD §4 `risk_signals`.
+enum RiskEntityType {
+  project
+  task
+  account
+}
+
+enum RiskSignalType {
+  sla_breach
+  stale_task
+  velocity_drop
+  sentiment_negative
+}
+
+enum RiskSeverity {
+  low
+  medium
+  high
+}
+
+// SAD §4 `reports` + API Contract Pattern B's documented status/pdfUrl fields.
+enum ReportType {
+  weekly_exec
+  project_status
+  custom
+}
+
+enum ReportGeneratedBy {
+  scheduled
+  manual
+}
+
+// API Contract Pattern B: "status: complete_fallback... indicates the template-report path was used."
+enum ReportStatus {
+  generating
+  complete
+  complete_fallback
+  failed
+}
+
+// SAD §2.6/§4 `memory_entries.embedding` pipeline state — not in SAD's literal schema snippet (which is DB-shape only), but required for "Batch embedding generation, Retry handling... Background processing" (Phase 7 requirement §2): a row can exist (and be retrieved by content/metadata) before its vector is computed.
+enum MemoryEmbeddingStatus {
+  pending
+  embedded
+  failed
+}
+
+model Organization {
+  id                 String   @id @default(uuid())
+  name               String
+  plan               OrgPlan  @default(free)
+  // SAD §13.8: "org-configurable threshold, default 0.7" — below this, classifications route to awaiting_approval instead of auto-creating a task.
+  classifierThreshold Float   @default(0.7) @map("classifier_threshold")
+  // API Contract Pattern C's "org's webhook secret" for `POST /meetings/ingest` (no per-account table for meetings, unlike email_accounts). Lazily generated on first use — nullable rather than backfilled via a migration.
+  meetingWebhookSecret String? @map("meeting_webhook_secret")
+  // SAD §8.4 "project's configured staleness threshold" — no per-project column is documented in SAD §4's projects table, so this follows the same org-level-default precedent as classifierThreshold above.
+  staleTaskThresholdDays Int   @default(5) @map("stale_task_threshold_days")
+  // SAD §8.6 Memory Consolidation workflow window marker — "since last run" needs a stored checkpoint; follows the same org-level-default precedent as the two fields above rather than a separate single-row tracking table. Null until the first consolidation run (falls back to org creation time).
+  lastMemoryConsolidationAt DateTime? @map("last_memory_consolidation_at")
+  // SAD §13.4: "a derived $ figure using org-configured hourly cost... editable in Settings so it reflects the org's own baseline rather than a marketing number." Defaults to a generic blended knowledge-worker rate.
+  roiHourlyCostUsd  Decimal  @default(60) @map("roi_hourly_cost_usd") @db.Decimal(10, 2)
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  users         User[]
+  notifications Notification[]
+  projects      Project[]
+  boards        Board[]
+  tasks         Task[]
+  auditLogs     AuditLog[]
+  emailAccounts EmailAccount[]
+  emailMessages EmailMessage[]
+  agentRuns     AgentRun[]
+  meetings      Meeting[]
+  riskSignals   RiskSignal[]
+  reports       Report[]
+  memoryEntries MemoryEntry[]
+  chatSessions  ChatSession[]
+
+  @@map("organizations")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  orgId     String   @map("org_id")
+  email     String   @unique
+  name      String
+  role      UserRole @default(member)
+  avatarUrl String?  @map("avatar_url")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organization    Organization    @relation(fields: [orgId], references: [id])
+  notifications   Notification[]
+  assignedTasks   Task[]          @relation("TaskAssignee")
+  taskActivity    TaskActivity[]  @relation("TaskActivityActor")
+  auditLogEntries AuditLog[]      @relation("AuditLogActor")
+  emailAccounts   EmailAccount[]
+  ownedActionItems MeetingActionItem[]
+  chatSessions    ChatSession[]
+
+  @@index([orgId], name: "idx_users_org")
+  @@map("users")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  orgId     String   @map("org_id")
+  userId    String   @map("user_id")
+  type      String
+  payload   Json
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@index([userId, read], name: "idx_notif_user_read")
+  @@map("notifications")
+}
+
+model Project {
+  id         String        @id @default(uuid())
+  orgId      String        @map("org_id")
+  name       String
+  status     ProjectStatus @default(active)
+  health     ProjectHealth @default(on_track)
+  startDate  DateTime?     @map("start_date") @db.Date
+  targetDate DateTime?     @map("target_date") @db.Date
+  createdAt  DateTime      @default(now()) @map("created_at")
+  // Audit fix (Phase 7 repo audit): every other mutable entity in this schema tracks `updatedAt` — `projects` was the one omission, which silently blocked any "completed since <timestamp>" query. Memory Consolidation (SAD §8.6) is the first caller that needs it, but this is a general correctness fix, not memory-specific.
+  updatedAt  DateTime      @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  boards       Board[]
+
+  @@index([orgId], name: "idx_projects_org")
+  @@map("projects")
+}
+
+model Board {
+  id        String    @id @default(uuid())
+  orgId     String    @map("org_id")
+  projectId String    @map("project_id")
+  name      String
+  type      BoardType @default(kanban)
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  project      Project       @relation(fields: [projectId], references: [id])
+  tasks        Task[]
+
+  @@index([orgId], name: "idx_boards_org")
+  @@index([projectId], name: "idx_boards_project")
+  @@map("boards")
+}
+
+model Task {
+  id           String       @id @default(uuid())
+  orgId        String       @map("org_id")
+  boardId      String       @map("board_id")
+  title        String
+  description  String?
+  status       TaskStatus   @default(todo)
+  priority     TaskPriority @default(medium)
+  assigneeId   String?      @map("assignee_id")
+  source       TaskSource   @default(manual)
+  sourceRefId  String?      @map("source_ref_id")
+  dueDate      DateTime?    @map("due_date")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  deletedAt    DateTime?    @map("deleted_at")
+
+  organization    Organization     @relation(fields: [orgId], references: [id])
+  board           Board            @relation(fields: [boardId], references: [id])
+  assignee        User?            @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  activity        TaskActivity[]
+  dependsOn       TaskDependency[] @relation("DependentTask")
+  dependedOnBy    TaskDependency[] @relation("DependencyTask")
+  meetingActionItems MeetingActionItem[]
+
+  @@index([boardId, status], name: "idx_tasks_board_status")
+  @@index([assigneeId], name: "idx_tasks_assignee")
+  @@index([orgId], name: "idx_tasks_org")
+  @@map("tasks")
+}
+
+model TaskDependency {
+  taskId          String @map("task_id")
+  dependsOnTaskId String @map("depends_on_task_id")
+
+  task          Task @relation("DependentTask", fields: [taskId], references: [id])
+  dependsOnTask Task @relation("DependencyTask", fields: [dependsOnTaskId], references: [id])
+
+  @@id([taskId, dependsOnTaskId])
+  @@map("task_dependencies")
+}
+
+// Product-facing history (SAD §4 design rationale: distinct from audit_log,
+// which is compliance-grade).
+model TaskActivity {
+  id        String    @id @default(uuid())
+  taskId    String    @map("task_id")
+  actorId   String?   @map("actor_id")
+  actorType ActorType @map("actor_type")
+  action    String
+  diff      Json?
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  task  Task  @relation(fields: [taskId], references: [id])
+  actor User? @relation("TaskActivityActor", fields: [actorId], references: [id])
+
+  @@index([taskId], name: "idx_task_activity_task")
+  @@map("task_activity")
+}
+
+// SAD §4 `email_accounts` — one per connected mailbox (Gmail/Outlook OAuth, §2.1).
+model EmailAccount {
+  id                  String        @id @default(uuid())
+  orgId               String        @map("org_id")
+  userId              String        @map("user_id")
+  provider            EmailProvider
+  oauthTokenEncrypted String        @map("oauth_token_encrypted")
+  // API Contract Pattern C: "HMAC-SHA256 of body using org's webhook secret" — scoped per-account here since one org can connect multiple mailboxes.
+  webhookSecret       String        @map("webhook_secret")
+  syncCursor          String?       @map("sync_cursor")
+  createdAt           DateTime      @default(now()) @map("created_at")
+
+  organization Organization   @relation(fields: [orgId], references: [id])
+  user         User           @relation(fields: [userId], references: [id])
+  messages     EmailMessage[]
+
+  @@index([orgId], name: "idx_email_accounts_org")
+  @@map("email_accounts")
+}
+
+// SAD §4 `email_messages`.
+model EmailMessage {
+  id          String       @id @default(uuid())
+  orgId       String       @map("org_id")
+  accountId   String       @map("account_id")
+  threadId    String       @map("thread_id")
+  sender      String
+  subject     String
+  bodySnippet String?      @map("body_snippet")
+  urgency     EmailUrgency?
+  intent      EmailIntent?
+  status      EmailStatus  @default(unprocessed)
+  receivedAt  DateTime     @map("received_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  account      EmailAccount @relation(fields: [accountId], references: [id])
+  agentRuns    AgentRun[]
+
+  @@index([orgId, status], name: "idx_email_org_status")
+  @@index([threadId], name: "idx_email_thread")
+  @@map("email_messages")
+}
+
+// SAD §4/§9/§15 `agent_runs` — per-invocation observability for every AI
+// agent call; `confidence`/`rationale`/`time_saved_minutes` (§13.11) and
+// `input_tokens`/`output_tokens`/`estimated_cost_usd` (§15) included now
+// since the Classifier Agent (§9.1) needs the full shape from its first run.
+model AgentRun {
+  id                String         @id @default(uuid())
+  orgId             String         @map("org_id")
+  agentName         AgentName      @map("agent_name")
+  triggerSource     String         @map("trigger_source")
+  emailMessageId    String?        @map("email_message_id")
+  meetingId         String?        @map("meeting_id")
+  reportId          String?        @map("report_id")
+  // n8n Workflow Spec §3: "agent_runs per chunk + one for the reduce step, linked via a shared parent_run_id... for multi-step agent traces."
+  parentRunId       String?        @map("parent_run_id")
+  input             Json
+  output            Json?
+  status            AgentRunStatus @default(queued)
+  confidence        Float?
+  rationale         String?
+  timeSavedMinutes  Int?           @map("time_saved_minutes")
+  inputTokens       Int?           @map("input_tokens")
+  outputTokens      Int?           @map("output_tokens")
+  estimatedCostUsd  Decimal?       @map("estimated_cost_usd") @db.Decimal(10, 4)
+  retryCount        Int            @default(0) @map("retry_count")
+  error             String?
+  startedAt         DateTime       @default(now()) @map("started_at")
+  completedAt       DateTime?      @map("completed_at")
+
+  organization Organization  @relation(fields: [orgId], references: [id])
+  emailMessage EmailMessage? @relation(fields: [emailMessageId], references: [id])
+  meeting      Meeting?      @relation(fields: [meetingId], references: [id])
+  report       Report?       @relation(fields: [reportId], references: [id])
+  parentRun    AgentRun?     @relation("AgentRunChildren", fields: [parentRunId], references: [id])
+  childRuns    AgentRun[]    @relation("AgentRunChildren")
+  // SAD §13.11: "the link between 'AI: Would you like me to notify John? [Yes]' in chat and the actual approval-gated agent_runs row the button triggers."
+  proposingChatMessages ChatMessage[] @relation("ChatMessageProposedAction")
+
+  @@index([orgId, status], name: "idx_agent_runs_org_status")
+  @@map("agent_runs")
+}
+
+// SAD §4 `meetings` — Meeting Intelligence Module (§2.3).
+model Meeting {
+  id         String   @id @default(uuid())
+  orgId      String   @map("org_id")
+  title      String
+  transcript String
+  summary    String?
+  occurredAt DateTime @map("occurred_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  organization Organization        @relation(fields: [orgId], references: [id])
+  actionItems  MeetingActionItem[]
+  agentRuns    AgentRun[]
+
+  @@index([orgId], name: "idx_meetings_org")
+  @@map("meetings")
+}
+
+// SAD §4 `meeting_action_items`.
+model MeetingActionItem {
+  id            String  @id @default(uuid())
+  meetingId     String  @map("meeting_id")
+  description   String
+  linkedTaskId  String? @map("linked_task_id")
+  ownerId       String? @map("owner_id")
+
+  meeting Meeting @relation(fields: [meetingId], references: [id])
+  task    Task?   @relation(fields: [linkedTaskId], references: [id])
+  owner   User?   @relation(fields: [ownerId], references: [id])
+
+  @@index([meetingId], name: "idx_meeting_action_items_meeting")
+  @@map("meeting_action_items")
+}
+
+// SAD §4 `risk_signals` — Operations Health & Risk Module (§2.4).
+model RiskSignal {
+  id         String         @id @default(uuid())
+  orgId      String         @map("org_id")
+  entityType RiskEntityType @map("entity_type")
+  entityId   String         @map("entity_id")
+  signalType RiskSignalType @map("signal_type")
+  severity   RiskSeverity
+  detail     Json
+  resolved   Boolean        @default(false)
+  // Audit fix (Phase 7 repo audit): `resolved` was a bare boolean with no timestamp, silently blocking any time-scoped "resolved since X" query — Memory Consolidation (SAD §8.6, "high-signal events since last run... resolved risks") is the first caller that needs it. Set in `RiskSignalRepository.resolve()`.
+  resolvedAt DateTime?      @map("resolved_at")
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@index([orgId, resolved], name: "idx_risk_org_resolved")
+  @@map("risk_signals")
+}
+
+// SAD §4 `reports` — Reporting Module (§2.5). `status`/`pdfUrl` extend the
+// documented columns per API Contract Pattern B's explicit response shape.
+model Report {
+  id          String            @id @default(uuid())
+  orgId       String            @map("org_id")
+  type        ReportType
+  status      ReportStatus      @default(generating)
+  content     Json?
+  pdfUrl      String?           @map("pdf_url")
+  generatedBy ReportGeneratedBy @map("generated_by")
+  periodStart DateTime?         @map("period_start")
+  periodEnd   DateTime?         @map("period_end")
+  createdAt   DateTime          @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  agentRuns    AgentRun[]
+
+  @@index([orgId, createdAt], name: "idx_reports_org_created")
+  @@map("reports")
+}
+
+// Immutable, append-only (SAD §4, §12). Covers every mutating action
+// including AI agent writes (from Phase 3+) — never editable, never deleted.
+model AuditLog {
+  id           String    @id @default(uuid())
+  orgId        String    @map("org_id")
+  actorId      String?   @map("actor_id")
+  actorType    ActorType @map("actor_type")
+  action       String
+  resourceType String    @map("resource_type")
+  resourceId   String    @map("resource_id")
+  metadata     Json?
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  actor        User?        @relation("AuditLogActor", fields: [actorId], references: [id])
+
+  @@index([orgId, createdAt], name: "idx_audit_org_created")
+  @@map("audit_log")
+}
+
+// SAD §2.6/§4 `memory_entries` — Memory Module (Phase 7). Base shape
+// (`entity_type text`, `entity_id`, `content`, `embedding vector(1536)`,
+// `importance real DEFAULT 0.5`) matches SAD §4's literal schema snippet
+// exactly. Additive columns beyond that snippet (mirrors the precedent set
+// by §13.11's additive `agent_runs` columns) support the pipeline
+// requirements this phase actually specifies:
+// - `contentHash` + the unique index: idempotency + duplicate
+// detection/merging (Phase 7 requirement §3) — re-running consolidation
+// over already-seen source data must not create duplicate rows.
+// - `embeddingStatus/Model/Version/Error`: batch embedding pipeline state
+// + versioning (Phase 7 requirement §2) — a memory row can exist before
+// its vector is computed, and a future model upgrade needs to identify
+// which rows were embedded with an older model.
+// - `sourceType` + `sourceRefId`: source tracing (Phase 7 requirement §6,
+// Memory Explorer) — distinct from `entityType`/`entityId` (the
+// business entity this memory is *about*, e.g. a project) since the
+// record that *generated* a memory snippet (e.g. one specific resolved
+// risk_signal) isn't always the same as its subject entity.
+// - `accessCount`/`lastAccessedAt`: importance/decay scoring (Phase 7
+// requirement §3) needs to distinguish "created 91 days ago, read
+// yesterday" from "created and never touched since."
+//
+// `embedding` is declared `Unsupported("vector(1536)")` because Prisma
+// Client (5.19, no native `vector` field type yet) cannot read/write pgvector
+// columns directly — every embedding read/write goes through raw SQL in
+// MemoryEntryRepository, which is also why there's no ivfflat `@@index`
+// here: Prisma can't express the `vector_cosine_ops` operator class, so
+// that index is created by `packages/database/sql/009_memory_pgvector.sql`
+// after this table exists.
+model MemoryEntry {
+  id         String   @id @default(uuid())
+  orgId      String   @map("org_id")
+  // Free-text per SAD §4 (not an enum) — "project" | "task" | "meeting" | "email" | "risk_signal" | "report" | "person" | "client" | "general", extensible without a migration.
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  content    String
+  // sha256 of `${orgId}|${entityType}|${entityId}|${content}` — idempotency + dedup key (Phase 7 requirement §2/§3).
+  contentHash String  @map("content_hash")
+  embedding  Unsupported("vector(1536)")?
+  embeddingStatus  MemoryEmbeddingStatus @default(pending) @map("embedding_status")
+  embeddingModel   String?  @map("embedding_model")
+  // Bumped when the embedding provider/model changes — drives the "rebuild embeddings" endpoint's stale-entry filter.
+  embeddingVersion Int?     @map("embedding_version")
+  embeddingError   String?  @map("embedding_error")
+  importance Float    @default(0.5)
+  // What generated this memory — "task" | "meeting" | "email" | "risk_signal" | "report" | "manual" | "correction". Distinct from `entityType` (see model doc above).
+  sourceType String   @map("source_type")
+  sourceRefId String? @map("source_ref_id")
+  metadata   Json?
+  accessCount Int     @default(0) @map("access_count")
+  lastAccessedAt DateTime? @map("last_accessed_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, entityType, entityId, contentHash], name: "uq_memory_dedup")
+  @@index([orgId, entityType, entityId], name: "idx_memory_org_entity")
+  @@index([orgId, embeddingStatus], name: "idx_memory_org_embedding_status")
+  @@index([orgId, importance], name: "idx_memory_org_importance")
+  @@map("memory_entries")
+}
+
+// SAD §13.1/§13.11 — AI Chat Workspace. Deliberately separate from
+// `agent_runs`: a chat session is user-initiated and multi-turn, whereas
+// `agent_runs` is a single agent invocation. Each turn's assistant message
+// still results in exactly one `agent_runs` row (agentName=chat) for the
+// same observability/audit guarantees every other agent gets — see
+// lib/ai/agents/chat-agent.ts.
+model ChatSession {
+  id        String   @id @default(uuid())
+  orgId     String   @map("org_id")
+  userId    String   @map("user_id")
+  // First user message, truncated — sidebar/history label. Nullable until the first message is sent.
+  title     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [orgId], references: [id])
+  user         User          @relation(fields: [userId], references: [id])
+  messages     ChatMessage[]
+
+  @@index([orgId, userId, updatedAt], name: "idx_chat_sessions_org_user")
+  @@map("chat_sessions")
+}
+
+enum ChatMessageRole {
+  user
+  assistant
+}
+
+model ChatMessage {
+  id        String          @id @default(uuid())
+  sessionId String          @map("session_id")
+  role      ChatMessageRole
+  content   String
+  // SAD §13.1: "inline entity references (task IDs, not just prose)" — `{type, id, label}[]`, always a subset of the live candidate rows the agent was grounded against (see chat-agent.ts), never model-invented.
+  referencedEntities Json?  @map("referenced_entities")
+  // SAD §13.11: set only on assistant messages that propose an approval-gated action.
+  proposedActionRunId String? @map("proposed_action_run_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  session           ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  proposedActionRun AgentRun?   @relation("ChatMessageProposedAction", fields: [proposedActionRunId], references: [id])
+
+  @@index([sessionId], name: "idx_chat_messages_session")
+  @@map("chat_messages")
+}
