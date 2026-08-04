@@ -74,6 +74,7 @@ export async function oauthSignInAction(provider: "google" | "azure"): Promise<v
   if (error || !data.url) {
     redirect("/login?error=oauth_failed");
   }
+;
 
-  redirect(data.url);
+redirect(data.url as never);
 }

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse, unstable_after as after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { OrganizationRepository } from "@/lib/repositories/organization-repository";
 import { verifyWebhookSignature } from "@/lib/security/webhook";
 import { ingestMeetingSchema } from "@/lib/validation/meeting";
