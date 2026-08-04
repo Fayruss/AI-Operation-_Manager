@@ -1,5 +1,11 @@
 # AI Changelog
 
+Active milestone: post-Phase 10 — deployment and production launch.
+Phases 1–10 complete; full verification chain passes. Entries below are
+newest first.
+
+---
+
 2026-08-04 — Phase 10 (Governance, Hardening & Deployment Readiness)
 
 Scope per the Implementation Guide's Phase 10 definition. Analytics

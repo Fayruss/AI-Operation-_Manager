@@ -1,9 +1,13 @@
 {
   "phase": 10,
+  "phase_status": "complete",
+  "active_milestone": "post-Phase 10 — deployment and production launch",
   "status": "deployment-ready; not production-verified",
   "last_updated": "2026-08-04",
 
   "phase_10_scope_note": "Implementation Guide defines Phase 10 as 'Governance, Hardening & Production Deployment'. Analytics is Phase 9 and was deliberately not rebuilt.",
+
+  "phases_delivered": "1-10",
 
   "completed": [
     "Phase 9 build stabilization (see prior entry)",
@@ -39,6 +43,20 @@
     "Environment validation already existed in lib/env.ts; a second module was started and deleted. Added a .env.example ↔ Zod schema drift test instead."
   ],
 
+  "production_readiness": {
+    "build_lint_types_tests": "pass",
+    "security": "RBAC gap closed; tenant scoping intact; RLS policies exist but unverified against a live database",
+    "logging": "audit log surfaced in-app",
+    "monitoring": "in-app AI Control Center only; no external error tracking or uptime alerting",
+    "performance": "not load-tested",
+    "documentation": "runbook written (docs/DEPLOYMENT.md)",
+    "deployment": "ready, not executed"
+  },
+
+  "known_warnings": [
+    "pnpm install reports pre-existing React 19 peer-dependency warnings (next@15.0.0, next-themes@0.3.0 declare peer ranges predating React 19.0.0 stable). Warnings only; install and build both pass. Unresolved because fixing requires a dependency upgrade."
+  ],
+
   "blocked_requires_external_infrastructure": [
     "Vercel production deploy — needs account credentials; outward-facing action",
     "Sentry error monitoring — needs DSN",
@@ -47,6 +65,15 @@
     "Rollback drill — needs two real deployments",
     "Integration + e2e tests (Test Plan §2/§3) — need a live test database",
     "Multi-tenant isolation at scale (Test Plan §7) — needs a scheduled environment"
+  ],
+
+  "next_milestone_steps": [
+    "Apply migrations, then run db:apply-sql (RLS policies — not optional) and verify rowsecurity=true on every table",
+    "Configure Vercel project, environment variables, and cron schedules per docs/DEPLOYMENT.md §5",
+    "Work the 10-step post-deployment verification list (docs/DEPLOYMENT.md §6)",
+    "Check 10 — cross-tenant isolation — is the release gate; a failure there is a data breach, not a bug",
+    "Take a Supabase backup before any deploy carrying a migration; DB rollback is forward-only + PITR restore",
+    "Provision external monitoring (error tracking, uptime) and run the load test once deployed"
   ],
 
   "resume_from": "Operator runs docs/DEPLOYMENT.md §4–§6 (migrations incl. db:apply-sql RLS, Vercel config, 10-step verification ending in the cross-tenant check). System is deployment-ready but NOT production-verified until those pass against a real deployment."

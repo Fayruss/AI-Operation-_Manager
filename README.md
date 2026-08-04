@@ -1,13 +1,34 @@
 # AI Operations Manager — Monorepo
 
-Phases 1–6 delivered: application shell, multi-tenant auth/RBAC, the Task &
-Project Core data/API layer, governance foundations (RLS, audit log), Email
+**Status: Phases 1–10 delivered. Deployment-ready, not yet
+production-verified.** Current milestone: post-Phase 10 deployment and
+production launch — see `docs/DEPLOYMENT.md` and `BUILD_STATUS.md`.
+
+Delivered: application shell, multi-tenant auth/RBAC, the Task & Project
+Core data/API layer, governance foundations (RLS, audit log), Email
 Intelligence (Gmail/Outlook OAuth, Classifier Agent), Meeting Intelligence
 (Summarizer Agent, n8n callback contract), the Operations Health & Risk
 Module (scheduled risk detection, Risk Agent, live Executive/Operations
-Dashboards), and the Reporting Module (Report Agent, PDF export, weekly +
-on-demand generation). See `CLAUDE.md` and the Implementation Guide for
-phase sequencing; Memory & RAG (Phase 7) is next.
+Dashboards), the Reporting Module (Report Agent, PDF export, weekly +
+on-demand generation), the Memory & RAG module with the Analytics/
+differentiation layer (Chat Workspace, Command Center, Memory Explorer, Org
+Map, ROI metrics), and Phase 10's governance and hardening work (Audit Log
+UI, Approval Center, AI Control Center, RBAC hardening, accessibility pass,
+Vitest suite, CI). See `CLAUDE.md` and the Implementation Guide for phase
+sequencing.
+
+## Verification status
+
+| Command | Result |
+|---|---|
+| `pnpm install` | passes |
+| `pnpm --filter @ai-ops/database prisma:generate` | passes |
+| `pnpm lint` | no ESLint warnings or errors |
+| `pnpm typecheck` | clean |
+| `pnpm build` | passes |
+| `pnpm test` | 92 passing (9 files) |
+
+Run in CI on every push and PR via `.github/workflows/ci.yml`.
 
 ## Source of truth
 
@@ -131,10 +152,37 @@ checked-in file would break that.
   live-polling status indicator, per-report preview (summary/highlights/
   risks/recommendations), PDF download
 
+**Phases 7–9 — Memory, RAG & the Differentiation Layer**
+- pgvector Memory Module, Memory Consolidation workflow, Memory Explorer
+- Analytics Dashboard, ROI metrics, Org Map
+- AI Chat Workspace (grounded, index-based entity references), Command
+  Center (⌘K), Copilot panel, Action Timeline, confidence display
+
+**Phase 10 — Governance, Hardening & Deployment Readiness**
+- Audit Log UI over the existing `GET /audit-log` — searchable, resource-
+  filterable, cursor-paginated, admin-gated
+- Approval Center: a central queue for every agent run parked at
+  `awaiting_approval`, with optimistic approve/reject. Adds
+  `GET /agents/approvals`; reuses the existing Pattern D approve endpoint
+- AI Control Center implemented against SAD §15 (running/queued, p50/p95
+  latency, token usage and cost, pending approvals, per-agent success rate,
+  retry distribution) — previously an empty-state stub
+- RBAC hardening: eight write endpoints were missing the `member+` gate the
+  API Contract documents, so `viewer` could create and update records
+- Accessibility pass: added the missing `ring` design token and focus rings
+  across Button/Input/Textarea/Sheet/user menu, plus keyboard activation for
+  `KpiCard`
+- Vitest with 92 unit tests covering Test Plan §1
+- GitHub Actions CI and `docs/DEPLOYMENT.md`
+
 ## What's explicitly out of scope so far
 
-Memory/RAG (Phase 7), Analytics Dashboard, AI Chat Workspace, Command
-Center, AI Copilot — see the Implementation Guide for phase sequencing.
+Everything blocking production is infrastructure this repository cannot
+reach: the Vercel deploy itself, a Sentry DSN, uptime alerting, load
+testing (Test Plan §6), the rollback drill, and the integration/e2e suites
+(Test Plan §2/§3), which need a live test database. Each is listed with its
+unblocking step in `docs/DEPLOYMENT.md` §10.
+
 The Projects/Kanban UI still renders Phase 1's mock data; heat map and
 dependency graph on the Operations Dashboard are designed empty states
 pending future work. n8n itself isn't connected in this environment —
