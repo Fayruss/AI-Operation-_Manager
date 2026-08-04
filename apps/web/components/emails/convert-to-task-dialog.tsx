@@ -42,7 +42,7 @@ export function ConvertToTaskDialog({ emailId, emailSubject }: { emailId: string
   }
 
   const selectClass =
-    "flex h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground shadow-sm focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50";
+    "flex h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>

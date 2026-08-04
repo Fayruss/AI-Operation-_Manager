@@ -5,6 +5,7 @@ import { loadPrompt } from "@/lib/ai/prompt-loader";
 import { classifierOutputSchema, type ClassifierOutput } from "@/lib/validation/agent";
 import { AgentRunRepository } from "@/lib/repositories/agent-run-repository";
 import { retrieveMemoryContext, formatMemoryContext } from "@/lib/memory/memory-retrieval-service";
+import { requiresHumanApproval } from "@/lib/ai/confidence-routing";
 
 /**
  * SAD §9.1 Classifier Agent. This is the direct-invocation stand-in for
@@ -74,7 +75,11 @@ export async function runClassifierAgent(
       temperature: 0.2
     });
 
-    const requiresApproval = data.confidence < confidenceThreshold && data.intent === "task";
+    const requiresApproval = requiresHumanApproval({
+      confidence: data.confidence,
+      intent: data.intent,
+      threshold: confidenceThreshold
+    });
 
     if (requiresApproval) {
       await AgentRunRepository.markAwaitingApproval(agentRun.id, {

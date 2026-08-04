@@ -20,7 +20,11 @@ export const tailwindPreset: Partial<Config> = {
         success: "hsl(var(--success))",
         warning: "hsl(var(--warning))",
         danger: "hsl(var(--danger))",
-        info: "hsl(var(--info))"
+        info: "hsl(var(--info))",
+        // Design System §10: "Focus states: visible 2px --primary ring on all
+        // interactive elements, never suppressed." Aliased to --primary so the
+        // ring tracks the theme in both light and dark.
+        ring: "hsl(var(--primary))"
       },
       fontFamily: {
         sans: ["var(--font-inter)", "system-ui", "sans-serif"],

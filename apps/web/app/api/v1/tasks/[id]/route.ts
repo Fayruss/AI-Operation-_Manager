@@ -9,12 +9,19 @@ export const GET = apiRoute<{ id: string }>(async (_request, ctx, { id }) => {
   return NextResponse.json(task);
 });
 
-/** API Contract Pattern A — `PATCH /tasks/:id`, optimistic concurrency via `updated_at`. */
-export const PATCH = apiRoute<{ id: string }>(async (request, ctx, { id }) => {
-  const input = await parseJsonBody(request, updateTaskSchema);
-  const updated = await TaskRepository.update(ctx.orgId, ctx.userId, id, input);
-  return NextResponse.json(updated);
-});
+/**
+ * API Contract Pattern A — `PATCH /tasks/:id`, optimistic concurrency via
+ * `updated_at`. `minRole: "member"` per the API Contract's documented
+ * member+ requirement for mutations — viewers are read-only.
+ */
+export const PATCH = apiRoute<{ id: string }>(
+  async (request, ctx, { id }) => {
+    const input = await parseJsonBody(request, updateTaskSchema);
+    const updated = await TaskRepository.update(ctx.orgId, ctx.userId, id, input);
+    return NextResponse.json(updated);
+  },
+  { minRole: "member" }
+);
 
 /** API Contract: `DELETE /tasks/:id` — admin+, soft-delete only (never hard-deletes). */
 export const DELETE = apiRoute<{ id: string }>(

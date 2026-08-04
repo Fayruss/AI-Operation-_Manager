@@ -37,7 +37,10 @@ export function UserMenu({ user }: { user: AppUser }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="rounded-full focus-visible:outline-none" aria-label="Open user menu">
+        <button
+          className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          aria-label="Open user menu"
+        >
           <Avatar>
             {user.avatarUrl && <AvatarImage src={user.avatarUrl} alt={user.name} />}
             <AvatarFallback>{initials(user.name)}</AvatarFallback>

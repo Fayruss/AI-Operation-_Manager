@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma, type AgentName, type AgentRun, type Prisma } from "@ai-ops/database";
 import { ApiError } from "@/lib/api/errors";
+import { percentile } from "@/lib/utils/percentile";
 
 /** JSON-safe serialization (same reasoning as writeAuditLog/task-repository diff — avoids raw Date/unknown values hitting a Prisma Json column). */
 function toJsonInput(value: unknown): Prisma.InputJsonValue {
@@ -149,6 +150,72 @@ export const AgentRunRepository = {
       _count: { _all: true }
     });
     return grouped.map((g) => ({ agentName: g.agentName, status: g.status, count: g._count._all }));
+  },
+
+  /**
+   * Implementation Guide Phase 10 Approval Center — every run parked at
+   * `awaiting_approval` for this org, newest first. `parentRunId: null`
+   * matches the precedent set by the aggregate queries above: a chunked
+   * run's children are trace rows, not separately approvable decisions.
+   */
+  async listAwaitingApproval(orgId: string, limit = 100): Promise<AgentRun[]> {
+    return prisma.agentRun.findMany({
+      where: { orgId, status: "awaiting_approval", parentRunId: null },
+      orderBy: { startedAt: "desc" },
+      take: limit
+    });
+  },
+
+  /**
+   * SAD §15 AI Control Center operational snapshot. One query per documented
+   * panel that isn't already covered by `getStatusCountsSince` (success/
+   * failure rate) or `listAwaitingApproval` (pending approvals):
+   * in-flight/queued counts, latency percentiles, token/cost totals, and the
+   * retry-count histogram.
+   *
+   * Latency is computed in JS from `startedAt`/`completedAt` rather than in
+   * SQL: Prisma has no portable percentile aggregate, and the row count for
+   * one org's recent window is small enough that pulling durations is
+   * cheaper than a raw-SQL escape hatch that would bypass the tenant
+   * scoping every other query here goes through.
+   */
+  async getControlCenterSnapshot(orgId: string, since: Date) {
+    const [inFlight, queued, completed, tokenTotals, retryRows] = await Promise.all([
+      prisma.agentRun.count({ where: { orgId, status: "running" } }),
+      prisma.agentRun.count({ where: { orgId, status: "queued" } }),
+      prisma.agentRun.findMany({
+        where: { orgId, status: "success", startedAt: { gte: since }, completedAt: { not: null } },
+        select: { startedAt: true, completedAt: true }
+      }),
+      prisma.agentRun.aggregate({
+        where: { orgId, startedAt: { gte: since } },
+        _sum: { inputTokens: true, outputTokens: true, estimatedCostUsd: true }
+      }),
+      prisma.agentRun.groupBy({
+        by: ["retryCount"],
+        where: { orgId, startedAt: { gte: since } },
+        _count: { _all: true }
+      })
+    ]);
+
+    const durationsMs = completed
+      .map((run) => (run.completedAt ? run.completedAt.getTime() - run.startedAt.getTime() : null))
+      .filter((value): value is number => value !== null && value >= 0)
+      .sort((a, b) => a - b);
+
+    return {
+      inFlight,
+      queued,
+      sampleSize: durationsMs.length,
+      p50Ms: percentile(durationsMs, 0.5),
+      p95Ms: percentile(durationsMs, 0.95),
+      inputTokens: tokenTotals._sum.inputTokens ?? 0,
+      outputTokens: tokenTotals._sum.outputTokens ?? 0,
+      estimatedCostUsd: Number(tokenTotals._sum.estimatedCostUsd ?? 0),
+      retryHistogram: retryRows
+        .map((row) => ({ retryCount: row.retryCount, runs: row._count._all }))
+        .sort((a, b) => a.retryCount - b.retryCount)
+    };
   },
 
   async getByIdInOrg(orgId: string, id: string): Promise<AgentRun> {

@@ -18,15 +18,18 @@ import { sendChatMessage } from "@/lib/chat/chat-service";
  * `/agents/chat/approve` call on a proposed action does, and that route
  * enforces its own role check).
  */
-export const POST = apiRoute(async (request, ctx) => {
-  const input = await parseJsonBody(request, sendChatMessageSchema);
-  const result = await sendChatMessage(ctx.orgId, ctx.userId, input);
-  return NextResponse.json(
-    {
-      session: result.session,
-      userMessage: result.userMessage,
-      assistantMessage: result.assistantMessage
-    },
-    { status: 201 }
-  );
-});
+export const POST = apiRoute(
+  async (request, ctx) => {
+    const input = await parseJsonBody(request, sendChatMessageSchema);
+    const result = await sendChatMessage(ctx.orgId, ctx.userId, input);
+    return NextResponse.json(
+      {
+        session: result.session,
+        userMessage: result.userMessage,
+        assistantMessage: result.assistantMessage
+      },
+      { status: 201 }
+    );
+  },
+  { minRole: "member" }
+);

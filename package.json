@@ -11,6 +11,7 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
     "db:migrate": "dotenv -e .env.local -- pnpm --filter @ai-ops/database prisma migrate deploy && dotenv -e .env.local -- pnpm --filter @ai-ops/database run db:apply-sql",
     "db:generate": "dotenv -e .env.local -- pnpm --filter @ai-ops/database prisma generate",

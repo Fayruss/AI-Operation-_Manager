@@ -1,4 +1,4 @@
-import { Building2, Check, Mail, Plug, Shield, Users } from "lucide-react";
+import { Building2, Check, Mail, Plug, Users } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,8 +7,10 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { MeetingWebhookPanel } from "@/components/meetings/meeting-webhook-panel";
+import { AuditLogTable } from "@/components/audit/audit-log-table";
 import { mockCurrentUser, mockOrganization } from "@/lib/mock/mock-data";
 import { getAuthContext } from "@/lib/auth/session";
+import { hasMinRole } from "@/lib/auth/rbac";
 import { EmailAccountRepository } from "@/lib/repositories/email-account-repository";
 import { cn } from "@/lib/utils/cn";
 
@@ -19,6 +21,10 @@ export default async function SettingsPage() {
   const ctx = await getAuthContext().catch(() => null);
   const accounts = ctx ? await EmailAccountRepository.listByOrg(ctx.orgId) : [];
   const connectedProviders = new Set(accounts.map((a) => a.provider));
+  // `GET /audit-log` is admin+ (SAD §5). Hiding the tab for lower roles
+  // avoids rendering a surface that can only ever return 403 — the server
+  // remains the enforcement point either way.
+  const canViewAuditLog = ctx ? hasMinRole(ctx.role, "admin") : false;
 
   return (
     <div className="space-y-6">
@@ -29,7 +35,7 @@ export default async function SettingsPage() {
           <TabsTrigger value="organization">Organization</TabsTrigger>
           <TabsTrigger value="users">Users & Roles</TabsTrigger>
           <TabsTrigger value="integrations">Integrations</TabsTrigger>
-          <TabsTrigger value="audit">Audit Log</TabsTrigger>
+          {canViewAuditLog && <TabsTrigger value="audit">Audit Log</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="organization">
@@ -131,17 +137,15 @@ export default async function SettingsPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="audit">
-          <Card>
-            <CardContent className="p-6">
-              <EmptyState
-                icon={Shield}
-                title="No audit events yet"
-                description="Every AI-mutating action will be logged here once agents are connected (SAD §2.8, §15)."
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {canViewAuditLog && (
+          <TabsContent value="audit">
+            <Card>
+              <CardContent className="p-6">
+                <AuditLogTable />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

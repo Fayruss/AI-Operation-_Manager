@@ -1,0 +1,68 @@
+name: CI
+
+# Runs the repository's full verification chain on every push and PR to the
+# integration branches. The step order mirrors the documented build target:
+# install → prisma generate → lint → typecheck → build → test. Prisma
+# generate must precede lint/typecheck/build because the generated client is
+# what `@ai-ops/database` re-exports and every repository imports.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+# A newer push to the same branch makes an in-flight run obsolete.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Lint, typecheck, build, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      # `next build` evaluates modules that read these at import time. They are
+      # non-secret placeholders so the build is hermetic: CI verifies the code
+      # compiles, never that it can reach a real Supabase/Anthropic project.
+      # Real values are configured in the hosting provider, not here.
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          # Matches the `packageManager` field in the root package.json.
+          version: 9.7.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # Matches the root package.json `engines.node` floor.
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @ai-ops/database prisma:generate
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Unit tests
+        run: pnpm test

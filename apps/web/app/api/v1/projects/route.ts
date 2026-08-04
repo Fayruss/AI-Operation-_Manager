@@ -12,17 +12,24 @@ export const GET = apiRoute(async (request, ctx) => {
   return NextResponse.json(page);
 });
 
-/** API Contract Pattern A shape (title/priority/etc. rules), applied here to Project instead of Task. */
-export const POST = apiRoute(async (request, ctx) => {
-  const idempotencyKey = getIdempotencyKey(request);
-  const cached = getIdempotentResponse(ctx.orgId, idempotencyKey);
-  if (cached) {
-    return NextResponse.json(cached.body, { status: cached.status });
-  }
+/**
+ * API Contract Pattern A shape (title/priority/etc. rules), applied here to
+ * Project instead of Task. `minRole: "member"` per the API Contract's
+ * documented member+ requirement for creates — viewers are read-only.
+ */
+export const POST = apiRoute(
+  async (request, ctx) => {
+    const idempotencyKey = getIdempotencyKey(request);
+    const cached = getIdempotentResponse(ctx.orgId, idempotencyKey);
+    if (cached) {
+      return NextResponse.json(cached.body, { status: cached.status });
+    }
 
-  const input = await parseJsonBody(request, createProjectSchema);
-  const project = await ProjectRepository.create(ctx.orgId, ctx.userId, input);
+    const input = await parseJsonBody(request, createProjectSchema);
+    const project = await ProjectRepository.create(ctx.orgId, ctx.userId, input);
 
-  saveIdempotentResponse(ctx.orgId, idempotencyKey, 201, project);
-  return NextResponse.json(project, { status: 201 });
-});
+    saveIdempotentResponse(ctx.orgId, idempotencyKey, 201, project);
+    return NextResponse.json(project, { status: 201 });
+  },
+  { minRole: "member" }
+);

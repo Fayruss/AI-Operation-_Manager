@@ -29,6 +29,9 @@ export const queryKeys = {
   auditLog: {
     list: <T extends QueryFilters<T>>(filters: T) => ["audit-log", filters] as const
   },
+  approvals: {
+    all: ["approvals"] as const
+  },
   emails: {
     list: <T extends QueryFilters<T>>(filters: T) => ["emails", filters] as const,
     detail: (id: string) => ["emails", id] as const

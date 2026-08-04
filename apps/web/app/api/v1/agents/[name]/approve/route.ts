@@ -27,56 +27,59 @@ const chatNotifyActionOutputSchema = z.object({
  * API Contract's note that "role check documented per-agent since approval
  * authority varies."
  */
-export const POST = apiRoute<{ name: string }>(async (request, ctx, { name }) => {
-  if (name !== "classifier" && name !== "chat") {
-    throw new ApiError("NOT_FOUND", `Unknown agent '${name}'`, undefined, "AGENT_NOT_FOUND");
-  }
+export const POST = apiRoute<{ name: string }>(
+  async (request, ctx, { name }) => {
+    if (name !== "classifier" && name !== "chat") {
+      throw new ApiError("NOT_FOUND", `Unknown agent '${name}'`, undefined, "AGENT_NOT_FOUND");
+    }
 
-  const input = await parseJsonBody(request, approveAgentRunSchema);
-  const agentRun = await AgentRunRepository.getByIdInOrg(ctx.orgId, input.agentRunId);
+    const input = await parseJsonBody(request, approveAgentRunSchema);
+    const agentRun = await AgentRunRepository.getByIdInOrg(ctx.orgId, input.agentRunId);
 
-  const resolved = await AgentRunRepository.resolveApproval(ctx.orgId, input.agentRunId);
+    const resolved = await AgentRunRepository.resolveApproval(ctx.orgId, input.agentRunId);
 
-  if (input.decision === "approved") {
-    if (name === "classifier") {
-      const output = classifierOutputSchema.safeParse(agentRun.output);
-      if (output.success && output.data.suggested_task) {
-        const boardId = await findDefaultBoardId(ctx.orgId);
-        if (boardId && agentRun.emailMessageId) {
-          await TaskRepository.createFromAgent(ctx.orgId, boardId, agentRun.id, {
-            title: output.data.suggested_task.title,
-            priority: output.data.suggested_task.priority,
-            source: "email",
-            sourceRefId: agentRun.emailMessageId
-          });
+    if (input.decision === "approved") {
+      if (name === "classifier") {
+        const output = classifierOutputSchema.safeParse(agentRun.output);
+        if (output.success && output.data.suggested_task) {
+          const boardId = await findDefaultBoardId(ctx.orgId);
+          if (boardId && agentRun.emailMessageId) {
+            await TaskRepository.createFromAgent(ctx.orgId, boardId, agentRun.id, {
+              title: output.data.suggested_task.title,
+              priority: output.data.suggested_task.priority,
+              source: "email",
+              sourceRefId: agentRun.emailMessageId
+            });
+          }
+        }
+      } else if (name === "chat") {
+        // SAD §13.1: "when the AI proposes an action... it does not execute
+        // directly." This is the point where an approved proposal actually
+        // becomes a real notification — same execute-on-approval boundary
+        // classifier's suggested-task branch uses above.
+        const output = chatNotifyActionOutputSchema.safeParse(agentRun.output);
+        if (output.success) {
+          await NotificationRepository.createMany(ctx.orgId, [
+            {
+              userId: output.data.targetUserId,
+              type: "chat.action_approved",
+              payload: { title: "Update from the AI Chat Workspace", description: output.data.summary }
+            }
+          ]);
         }
       }
-    } else if (name === "chat") {
-      // SAD §13.1: "when the AI proposes an action... it does not execute
-      // directly." This is the point where an approved proposal actually
-      // becomes a real notification — same execute-on-approval boundary
-      // classifier's suggested-task branch uses above.
-      const output = chatNotifyActionOutputSchema.safeParse(agentRun.output);
-      if (output.success) {
-        await NotificationRepository.createMany(ctx.orgId, [
-          {
-            userId: output.data.targetUserId,
-            type: "chat.action_approved",
-            payload: { title: "Update from the AI Chat Workspace", description: output.data.summary }
-          }
-        ]);
-      }
     }
-  }
 
-  await writeAuditLog({
-    orgId: ctx.orgId,
-    actorId: ctx.userId,
-    action: input.decision === "approved" ? "agent_run.approved" : "agent_run.rejected",
-    resourceType: "agent_run",
-    resourceId: resolved.id,
-    metadata: { note: input.note, agentName: name }
-  });
+    await writeAuditLog({
+      orgId: ctx.orgId,
+      actorId: ctx.userId,
+      action: input.decision === "approved" ? "agent_run.approved" : "agent_run.rejected",
+      resourceType: "agent_run",
+      resourceId: resolved.id,
+      metadata: { note: input.note, agentName: name }
+    });
 
-  return NextResponse.json({ agentRunId: resolved.id, status: input.decision, executedAt: new Date().toISOString() });
-});
+    return NextResponse.json({ agentRunId: resolved.id, status: input.decision, executedAt: new Date().toISOString() });
+  },
+  { minRole: "member" }
+);

@@ -22,17 +22,23 @@ export const GET = apiRoute(async (request, ctx) => {
  * API Contract Pattern A — `POST /tasks`. Reproduces the documented
  * request/response/validation contract exactly, including
  * `Idempotency-Key` support from the Global Conventions section.
+ * `minRole: "member"` per the API Contract's documented `403 FORBIDDEN`
+ * ("valid token, insufficient role — member+ required") — viewers are
+ * read-only.
  */
-export const POST = apiRoute(async (request, ctx) => {
-  const idempotencyKey = getIdempotencyKey(request);
-  const cached = getIdempotentResponse(ctx.orgId, idempotencyKey);
-  if (cached) {
-    return NextResponse.json(cached.body, { status: cached.status });
-  }
+export const POST = apiRoute(
+  async (request, ctx) => {
+    const idempotencyKey = getIdempotencyKey(request);
+    const cached = getIdempotentResponse(ctx.orgId, idempotencyKey);
+    if (cached) {
+      return NextResponse.json(cached.body, { status: cached.status });
+    }
 
-  const input = await parseJsonBody(request, createTaskSchema);
-  const task = await TaskRepository.create(ctx.orgId, ctx.userId, input);
+    const input = await parseJsonBody(request, createTaskSchema);
+    const task = await TaskRepository.create(ctx.orgId, ctx.userId, input);
 
-  saveIdempotentResponse(ctx.orgId, idempotencyKey, 201, task);
-  return NextResponse.json(task, { status: 201 });
-});
+    saveIdempotentResponse(ctx.orgId, idempotencyKey, 201, task);
+    return NextResponse.json(task, { status: 201 });
+  },
+  { minRole: "member" }
+);

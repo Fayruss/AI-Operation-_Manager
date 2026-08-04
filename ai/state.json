@@ -1,25 +1,21 @@
 {
-  "phase": 9,
-  "status": "build succeeds",
+  "phase": 10,
+  "status": "deployment-ready; not production-verified",
   "last_updated": "2026-08-04",
 
+  "phase_10_scope_note": "Implementation Guide defines Phase 10 as 'Governance, Hardening & Production Deployment'. Analytics is Phase 9 and was deliberately not rebuilt.",
+
   "completed": [
-    "Invalid Prisma comments removed",
-    "Prisma schema validates",
-    "Prisma Client generates",
-    "React upgraded to stable release",
-    "React types updated",
-    "Route handlers updated",
-    "Next.js compatibility fixes applied",
-    "ESLint preset resolution fixed (relative path form; ESLint 8 treats extends entries as config names)",
-    "eslint-config-prettier declared in packages/config (was referenced but never installed)",
-    "typedRoutes errors fixed via Route type on nav-config and command-palette",
-    "Zod request payload types switched from z.infer to z.input",
-    "Query key factories made generic; redundant cast removed",
-    "useReports overloaded for defined initialData",
-    "task-repository workload accumulator restructured",
-    "risk-detection-service signalType narrowed to detector types",
-    "Supabase setAll cookie params typed without any"
+    "Phase 9 build stabilization (see prior entry)",
+    "Audit Log UI over existing GET /audit-log — searchable, filterable, cursor-paginated, admin-gated",
+    "Approval Center UI + GET /agents/approvals read endpoint + listAwaitingApproval repository query",
+    "AI Control Center implemented against SAD §15 (was an empty-state stub)",
+    "RBAC hardening — added documented member+ gate to 8 write endpoints that had none",
+    "Accessibility pass — ring token added to tailwind preset; focus rings on Button/Input/Textarea/Sheet/user-menu/2 form controls; KpiCard keyboard activation",
+    "Vitest installed; 92 unit tests across 9 files per Test Plan §1",
+    "GitHub Actions CI: install → prisma generate → lint → typecheck → build → test",
+    "docs/DEPLOYMENT.md runbook",
+    "Extracted confidence-routing.ts and percentile.ts as pure testable modules"
   ],
 
   "current_blocker": null,
@@ -27,14 +23,31 @@
   "build": {
     "install": true,
     "prisma_generate": true,
-    "build": true,
     "lint": true,
-    "typecheck": true
+    "typecheck": true,
+    "build": true,
+    "test": true,
+    "test_count": 92,
+    "test_files": 9
   },
 
-  "warnings": [
-    "pnpm install reports pre-existing peer-dependency warnings: next@15.0.0 and next-themes@0.3.0 declare peer ranges predating React 19.0.0 stable. Warnings only; install and build both pass. Not resolved because it would require a dependency upgrade."
+  "security_findings_fixed": [
+    "viewer role could create/update tasks, projects, boards and decide approvals — API Contract documents member+ but no minRole was set on 8 endpoints"
   ],
 
-  "resume_from": "Build target is met (install, prisma:generate, build all pass; lint and tsc clean). Resume feature work per the Phase 9 plan."
+  "duplication_avoided": [
+    "Environment validation already existed in lib/env.ts; a second module was started and deleted. Added a .env.example ↔ Zod schema drift test instead."
+  ],
+
+  "blocked_requires_external_infrastructure": [
+    "Vercel production deploy — needs account credentials; outward-facing action",
+    "Sentry error monitoring — needs DSN",
+    "Uptime alerting — external service",
+    "Load testing — needs a deployed environment with realistic data volume (Test Plan §6)",
+    "Rollback drill — needs two real deployments",
+    "Integration + e2e tests (Test Plan §2/§3) — need a live test database",
+    "Multi-tenant isolation at scale (Test Plan §7) — needs a scheduled environment"
+  ],
+
+  "resume_from": "Operator runs docs/DEPLOYMENT.md §4–§6 (migrations incl. db:apply-sql RLS, Vercel config, 10-step verification ending in the cross-tenant check). System is deployment-ready but NOT production-verified until those pass against a real deployment."
 }

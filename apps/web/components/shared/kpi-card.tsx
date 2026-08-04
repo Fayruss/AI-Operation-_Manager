@@ -40,7 +40,24 @@ export function KpiCard({ label, value, trend, icon: Icon, loading, onClick }: K
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
-      className={cn(onClick && "cursor-pointer transition-colors hover:border-primary/50")}
+      // A div with role="button" gets no native keyboard activation — without
+      // this, a clickable KPI card is focusable but unusable by keyboard
+      // (CLAUDE.md accessibility: "full keyboard navigation"). Space is
+      // preventDefault'd because it would otherwise scroll the page.
+      onKeyDown={
+        onClick
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+      className={cn(
+        onClick &&
+          "cursor-pointer transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      )}
     >
       <CardContent className="flex items-start justify-between p-6">
         <div>

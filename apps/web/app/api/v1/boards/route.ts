@@ -19,8 +19,12 @@ export const GET = apiRoute(async (request, ctx) => {
   return NextResponse.json({ boards });
 });
 
-export const POST = apiRoute(async (request, ctx) => {
-  const input = await parseJsonBody(request, createBoardSchema);
-  const board = await BoardRepository.create(ctx.orgId, ctx.userId, input);
-  return NextResponse.json(board, { status: 201 });
-});
+/** `minRole: "member"` per the API Contract's documented member+ requirement for creates — viewers are read-only. */
+export const POST = apiRoute(
+  async (request, ctx) => {
+    const input = await parseJsonBody(request, createBoardSchema);
+    const board = await BoardRepository.create(ctx.orgId, ctx.userId, input);
+    return NextResponse.json(board, { status: 201 });
+  },
+  { minRole: "member" }
+);

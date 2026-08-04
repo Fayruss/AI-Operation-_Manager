@@ -9,8 +9,12 @@ export const GET = apiRoute<{ id: string }>(async (_request, ctx, { id }) => {
   return NextResponse.json(project);
 });
 
-export const PATCH = apiRoute<{ id: string }>(async (request, ctx, { id }) => {
-  const input = await parseJsonBody(request, updateProjectSchema);
-  const updated = await ProjectRepository.update(ctx.orgId, ctx.userId, id, input);
-  return NextResponse.json(updated);
-});
+/** `minRole: "member"` per the API Contract's documented member+ requirement for mutations — viewers are read-only. */
+export const PATCH = apiRoute<{ id: string }>(
+  async (request, ctx, { id }) => {
+    const input = await parseJsonBody(request, updateProjectSchema);
+    const updated = await ProjectRepository.update(ctx.orgId, ctx.userId, id, input);
+    return NextResponse.json(updated);
+  },
+  { minRole: "member" }
+);

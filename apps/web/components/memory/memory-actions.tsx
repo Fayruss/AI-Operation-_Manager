@@ -60,7 +60,7 @@ export function AddMemoryDialog() {
               onChange={(e) => setContent(e.target.value)}
               required
               rows={5}
-              className="flex w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none"
+              className="flex w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               placeholder="A fact, preference, or note worth remembering organization-wide…"
             />
           </div>
