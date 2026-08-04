@@ -261,3 +261,77 @@ Next action
 Unchanged from Phase 10: operator runs `docs/DEPLOYMENT.md` §4–§6. The
 Vercel build should now clear the type check; the §10 verification list —
 especially check 10 (cross-tenant isolation) — remains the real gate.
+
+---
+
+## 2026-08-04 — Correction: the above fix broke the Vercel build
+
+Superseding note
+
+The entry immediately above is **partly wrong and its fix was reverted.**
+It resolved the implicit-`any` by importing `type MemoryEntry` from
+`@ai-ops/database`. That type is only re-exported (via
+`export * from "@prisma/client"` in `packages/database/src/index.ts`) once
+`prisma generate` has produced the client. On Vercel it had not, so the
+next deploy failed with:
+
+```
+app/api/v1/memory/rebuild-embeddings/route.ts
+Module "@ai-ops/database" has no exported member "MemoryEntry".
+```
+
+Importing a generated type to fix a problem *caused by* that type not being
+generated was circular. The local typecheck passed only because a
+previously-generated client was present.
+
+Resolution — repository exposes its own type
+
+`memory-retrieval-service.ts:2` shows this codebase's actual convention:
+consumers import the repository's own exported types *from the repository*
+(`type MemorySearchResult`), not Prisma model types. `pagination.ts`
+reinforces it — `paginate<T extends { id: string; createdAt: Date }>` types
+by structural constraint rather than naming a Prisma model.
+
+`listStaleEmbeddings` now follows that convention:
+
+- `select: { id: true }` — the only field any caller uses
+  (`markPendingForRebuild` takes ids).
+- Explicit return type `Promise<{ id: string }[]>`, which is structural and
+  therefore correct whether or not the client has been generated.
+- Route callback typed `(entry: { id: string })`; the nonexistent
+  `MemoryEntry` import removed.
+
+No `any`, no casts, no suppressions, no invented exports. The three
+unrelated annotations added in the previous entry (`getByIdInOrg`,
+`listRelated`, `listPendingEmbeddings`) were reverted — they were scope
+creep and carried the same circular dependency.
+
+Net diff: one `select`, one return type, one typed callback.
+
+Files modified
+
+- `apps/web/lib/repositories/memory-entry-repository.ts`
+- `apps/web/app/api/v1/memory/rebuild-embeddings/route.ts`
+
+Verification
+
+tsc --noEmit — exit 0
+pnpm build — 1 successful, exit 0
+pnpm lint — no ESLint warnings or errors
+pnpm test — 9 files, exit 0
+
+Still-open root cause — NOT fixed by this change
+
+Nothing runs `prisma generate` on Vercel. `packages/database` has no
+`postinstall`, and `turbo.json`'s `build.dependsOn: ["^build"]` is a no-op
+for it because that package defines no `build` script. This change makes
+the memory route immune, but every other repository still imports generated
+model types (`type Board`, `type Task`, `type Meeting`, ...) and remains
+exposed. Those did not surface earlier only because `next build` reports
+just the first type error.
+
+Recommended fix (deliberately not applied — changes install/build
+behaviour and warrants explicit sign-off): add
+`"postinstall": "prisma generate"` to `packages/database/package.json`.
+That is the durable fix; the change recorded here is the correct narrow
+fix for the reported error.

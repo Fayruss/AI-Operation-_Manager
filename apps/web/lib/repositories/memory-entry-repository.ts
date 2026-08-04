@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { prisma, Prisma, type MemoryEntry, type MemoryEmbeddingStatus } from "@ai-ops/database";
+import { prisma, Prisma, type MemoryEmbeddingStatus } from "@ai-ops/database";
 import { ApiError } from "@/lib/api/errors";
 import { cursorWhere, paginate, type CursorPosition } from "@/lib/api/pagination";
 
@@ -87,7 +87,7 @@ export const MemoryEntryRepository = {
     return paginate(rows, limit);
   },
 
-  async getByIdInOrg(orgId: string, id: string): Promise<MemoryEntry> {
+  async getByIdInOrg(orgId: string, id: string) {
     const entry = await prisma.memoryEntry.findFirst({ where: { id, orgId } });
     if (!entry) {
       throw new ApiError("NOT_FOUND", "Memory entry not found", undefined, "MEMORY_ENTRY_NOT_FOUND");
@@ -96,7 +96,7 @@ export const MemoryEntryRepository = {
   },
 
   /** Memory Explorer "related memories" (Phase 7 requirement §6) — other entries about the same subject entity, most important first. */
-  async listRelated(orgId: string, entityType: string, entityId: string, excludeId: string, limit = 5): Promise<MemoryEntry[]> {
+  async listRelated(orgId: string, entityType: string, entityId: string, excludeId: string, limit = 5) {
     return prisma.memoryEntry.findMany({
       where: { orgId, entityType, entityId, id: { not: excludeId } },
       orderBy: [{ importance: "desc" }, { createdAt: "desc" }],
@@ -157,7 +157,7 @@ export const MemoryEntryRepository = {
   },
 
   /** Embedding pipeline (Phase 7 requirement §2): entries awaiting a vector for one org, oldest first — bounded batch size, called repeatedly until empty. Always org-scoped; every call site (embedding-pipeline.ts) passes a concrete `orgId` — see that file's doc comment for why a cross-org sweep isn't offered here. */
-  async listPendingEmbeddings(orgId: string, limit: number): Promise<MemoryEntry[]> {
+  async listPendingEmbeddings(orgId: string, limit: number) {
     return prisma.memoryEntry.findMany({
       where: { orgId, embeddingStatus: "pending" },
       orderBy: { createdAt: "asc" },
@@ -165,9 +165,20 @@ export const MemoryEntryRepository = {
     });
   },
 
-  /** "Rebuild embeddings" (Phase 7 requirement §7 API): entries embedded with a stale model/version, or previously failed. */
-  async listStaleEmbeddings(orgId: string, currentModel: string, currentVersion: number, limit: number): Promise<MemoryEntry[]> {
+  /**
+   * "Rebuild embeddings" (Phase 7 requirement §7 API): entries embedded with a stale model/version, or previously failed.
+   *
+   * Returns only the identifiers the caller needs (`markPendingForRebuild`
+   * takes ids). The explicit return type is deliberate: without it this
+   * method's type is inferred from the generated Prisma client, so any
+   * environment that type-checks before `prisma generate` has run collapses
+   * it to `any` and surfaces the failure at the *call site* instead of here.
+   * Selecting `id` keeps the contract narrow and independent of the
+   * generated model type.
+   */
+  async listStaleEmbeddings(orgId: string, currentModel: string, currentVersion: number, limit: number): Promise<{ id: string }[]> {
     return prisma.memoryEntry.findMany({
+      select: { id: true },
       where: {
         orgId,
         OR: [
