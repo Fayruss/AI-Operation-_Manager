@@ -169,3 +169,95 @@ non-optional `db:apply-sql` RLS step, configure Vercel, then work the
 that matters most — a failure there is a data breach, not a bug. Until
 those checks pass against a real deployment, treat the system as unverified
 in production regardless of CI status.
+
+---
+
+## 2026-08-04 — Vercel deploy fix: implicit `any` in rebuild-embeddings
+
+Trigger
+
+First Vercel deploy after Phase 10 failed on a strict TypeScript error the
+local build did not surface:
+
+```
+app/api/v1/memory/rebuild-embeddings/route.ts
+Parameter 'e' implicitly has an 'any' type.
+```
+
+Root cause
+
+Not a defect in the callback. `MemoryEntryRepository.listStaleEmbeddings`
+had **no explicit return type**, so its type was inferred from
+`prisma.memoryEntry.findMany(...)`. That inference is only resolvable when
+the generated Prisma client exists on disk. On a cold Vercel builder the
+client is generated into `node_modules/.pnpm/...`, and where that
+resolution does not land before the type check, `prisma.memoryEntry`
+degrades to `any`, the return type collapses to `any[]`, and the error
+surfaces at the *call site* as an implicitly-typed parameter.
+
+Local builds passed because an earlier `prisma:generate` had already left a
+generated client in place. Reproduced by confirming
+`node_modules/.prisma/client/index.d.ts` was absent before regenerating.
+
+Fix (no suppression, no casts)
+
+`memory-entry-repository.ts` was the only repository in
+`lib/repositories/` that did not import its own Prisma model type — every
+sibling (`board`, `meeting`, `project`, `task`, ...) already imports
+`type Board` / `type Meeting` / etc. from `@ai-ops/database`. That omission
+is exactly what left its return types dependent on inference. Fixed to
+match the existing convention:
+
+- Imported `type MemoryEntry` from `@ai-ops/database`.
+- Annotated `listStaleEmbeddings` → `Promise<MemoryEntry[]>` (the reported
+  error), plus `listPendingEmbeddings`, `listRelated` → `Promise<MemoryEntry[]>`
+  and `getByIdInOrg` → `Promise<MemoryEntry>`, which carried identical
+  latent exposure.
+- Typed the route callback parameter explicitly as `(entry: MemoryEntry)`
+  so the route no longer depends on cross-package inference at all.
+
+`MemoryEntry` (not the hand-written `MemoryEntryRow`) is the correct type
+here: the generated payload matches `MemoryEntryRow` field-for-field except
+`metadata`, which Prisma types as `Prisma.JsonValue | null` against the
+interface's `Record<string, unknown> | null`. Annotating with
+`MemoryEntryRow` would have required a cast — the thing to avoid. It also
+correctly omits `embedding`, the `Unsupported("vector(1536)")` column.
+
+Files modified
+
+- `apps/web/lib/repositories/memory-entry-repository.ts` — model type import
+  + 4 explicit return types
+- `apps/web/app/api/v1/memory/rebuild-embeddings/route.ts` — type-only import
+  + typed callback parameter
+
+Verification
+
+pnpm lint — no ESLint warnings or errors
+tsc --noEmit — clean (exit 0)
+pnpm build — compiled successfully
+pnpm test — 92 passed (9 files), unchanged
+
+Known gap — this class of failure can recur
+
+The fix removes this specific inference dependency, but the underlying
+fragility is repository-wide: any repository method without an explicit
+return type is exposed to the same cold-builder behaviour. The durable
+guard is ensuring `prisma:generate` always runs before typecheck/build on
+the Vercel builder (CI already orders it correctly; confirm the Vercel
+install/build command does too). Worth an explicit sweep for
+inference-dependent return types across `lib/repositories/` in a future
+pass.
+
+Docs note
+
+CLAUDE.md's startup procedure references `CHANGELOG_AI.md` and
+`.ai/state.json`. Neither exists in this repository; only
+`BUILD_STATUS.md` is present. They were deliberately not created here
+rather than fabricating state — flagging so the discrepancy can be
+resolved (either create them intentionally or drop them from CLAUDE.md).
+
+Next action
+
+Unchanged from Phase 10: operator runs `docs/DEPLOYMENT.md` §4–§6. The
+Vercel build should now clear the type check; the §10 verification list —
+especially check 10 (cross-tenant isolation) — remains the real gate.

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { MemoryEntry } from "@ai-ops/database";
 import { apiRoute } from "@/lib/api/handler";
 import { parseJsonBody } from "@/lib/api/request";
 import { rebuildEmbeddingsSchema } from "@/lib/validation/memory";
@@ -29,7 +30,9 @@ export const POST = apiRoute(
     const targetIds =
       input.entryIds && input.entryIds.length > 0
         ? input.entryIds
-        : (await MemoryEntryRepository.listStaleEmbeddings(ctx.orgId, provider.model, EMBEDDING_MODEL_VERSION, 500)).map((e) => e.id);
+        : (
+            await MemoryEntryRepository.listStaleEmbeddings(ctx.orgId, provider.model, EMBEDDING_MODEL_VERSION, 500)
+          ).map((entry: MemoryEntry) => entry.id);
 
     await MemoryEntryRepository.markPendingForRebuild(ctx.orgId, targetIds);
     const result = await embedPendingEntries(ctx.orgId, 25);
