@@ -1,17 +1,3 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "crons": [
-    {
-      "path": "/api/v1/cron/risk-scan",
-      "schedule": "*/15 * * * *"
-    },
-    {
-      "path": "/api/v1/cron/weekly-report",
-      "schedule": "0 16 * * 5"
-    },
-    {
-      "path": "/api/v1/cron/memory-consolidation",
-      "schedule": "0 3 * * *"
-    }
-  ]
 }
