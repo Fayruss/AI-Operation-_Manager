@@ -5,7 +5,8 @@
           "main": "src/index.ts",
             "types": "src/index.ts",
               "scripts": {
-                  "prisma:generate": "prisma generate",
+                  "postinstall": "prisma generate",
+                      "prisma:generate": "prisma generate",
                       "prisma:migrate": "prisma migrate deploy",
                           "prisma:studio": "prisma studio",
                               "db:apply-sql": "bash scripts/apply-sql.sh"

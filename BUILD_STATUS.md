@@ -335,3 +335,95 @@ behaviour and warrants explicit sign-off): add
 `"postinstall": "prisma generate"` to `packages/database/package.json`.
 That is the durable fix; the change recorded here is the correct narrow
 fix for the reported error.
+
+---
+
+## 2026-08-05 — Root cause fixed: `prisma generate` now runs on install
+
+Trigger
+
+Next clean-environment Vercel failure, same class as the `MemoryEntry` one:
+
+```
+app/app/analytics/page.tsx
+Module "@ai-ops/database" has no exported member "AgentName".
+```
+
+Root cause (confirmed, not inferred)
+
+The gap flagged in the previous entry, now verified: **no `postinstall`
+existed anywhere in the monorepo** — checked root, `apps/web`, and every
+`packages/*`. `prisma generate` therefore never ran on Vercel, so
+`export * from "@prisma/client"` re-exported nothing and every generated
+type vanished in that environment.
+
+An audit found **26 files** importing generated types from
+`@ai-ops/database`. Fixing them one deploy at a time was not viable —
+`next build` reports only the first type error, so each fix would have
+surfaced the next.
+
+Fix 1 — the durable one
+
+Added `"postinstall": "prisma generate"` to
+`packages/database/package.json`. Verified the hook actually fires:
+
+```
+packages/database postinstall$ prisma generate
+packages/database postinstall: ✔ Generated Prisma Client (v5.22.0)
+```
+
+This resolves the whole class for all 26 files. Chosen over migrating them
+to hand-authored mirrors, which would have duplicated 20+ types.
+
+Fix 2 — `AgentName` placement
+
+`AgentName` is a Prisma enum (schema.prisma:146) with 12 usages across 4
+files, one of which is a **Client Component** (`app/app/analytics/page.tsx`,
+a label map). `packages/types/src/index.ts` already establishes the
+convention for exactly this: `UserRole` and `OrgPlan` are Prisma enums
+hand-authored there as string-literal unions, and **7 files import
+`UserRole` from `@ai-ops/types`, none from `@ai-ops/database`.**
+
+`AgentName` added beside them and the 4 consumers repointed. Not a
+duplicate type — the shared package is the established home for enums that
+Client Components consume, which must not depend on the generated client.
+The union was verified value-for-value against the schema enum (7 values:
+classifier, summarizer, risk, report, reply_draft, memory, chat).
+
+Drift protection is structural, so no extra test was added:
+`agent-run-repository.ts:114` passes `AgentName` into a Prisma `where`
+clause and `:139` returns Prisma's generated enum as `AgentName`. Both
+directions are assignability-checked against the generated enum wherever
+the client exists (locally and in CI), so schema drift fails `tsc` there.
+
+Files modified
+
+- `packages/database/package.json` — postinstall hook
+- `packages/types/src/index.ts` — `AgentName` union
+- `apps/web/app/app/analytics/page.tsx`
+- `apps/web/lib/analytics/roi-metrics-service.ts`
+- `apps/web/lib/repositories/agent-run-repository.ts`
+
+5 files, +15/-4.
+
+Verification
+
+pnpm install — postinstall generates client
+tsc --noEmit — exit 0
+pnpm build — 1 successful, exit 0
+pnpm lint — no ESLint warnings or errors
+pnpm test — 1 successful, exit 0
+
+Residual risk
+
+The remaining 25 files' generated-type imports are now correct-by-
+construction rather than individually re-verified: they were always valid
+given a generated client, and `postinstall` guarantees one. The honest
+limit of local testing is that it cannot fully reproduce a cold Vercel
+builder — the next deploy is the real confirmation.
+
+Next action
+
+Re-deploy. If a further "no exported member" error appears despite
+`postinstall`, the cause is upstream of the type layer (install ordering or
+build command on the Vercel side), not the imports.

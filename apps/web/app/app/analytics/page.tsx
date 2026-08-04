@@ -9,7 +9,7 @@ import { OrgMap } from "@/components/analytics/org-map";
 import { getAuthContext } from "@/lib/auth/session";
 import { TaskRepository } from "@/lib/repositories/task-repository";
 import { AgentRunRepository } from "@/lib/repositories/agent-run-repository";
-import type { AgentName } from "@ai-ops/database";
+import type { AgentName } from "@ai-ops/types";
 
 const WEEK_LABEL_FORMAT: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
 const AGENT_LABEL: Record<AgentName, string> = {

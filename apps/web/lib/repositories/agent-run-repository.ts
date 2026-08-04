@@ -1,5 +1,6 @@
 import "server-only";
-import { prisma, type AgentName, type AgentRun, type Prisma } from "@ai-ops/database";
+import { prisma, type AgentRun, type Prisma } from "@ai-ops/database";
+import type { AgentName } from "@ai-ops/types";
 import { ApiError } from "@/lib/api/errors";
 import { percentile } from "@/lib/utils/percentile";
 

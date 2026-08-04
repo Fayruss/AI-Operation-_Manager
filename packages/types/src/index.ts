@@ -9,6 +9,15 @@
 export type UserRole = "owner" | "admin" | "member" | "viewer";
 export type OrgPlan = "free" | "pro" | "enterprise";
 
+/**
+ * Mirrors the `AgentName` enum in schema.prisma (SAD §9/§13.1) — the set of
+ * agents that write `agent_runs` rows. Declared here alongside `UserRole`
+ * and `OrgPlan` for the reason given above: consumers include Client
+ * Components (`app/app/analytics/page.tsx`'s label map), which must not
+ * depend on the generated Prisma client. Keep in sync with schema.prisma.
+ */
+export type AgentName = "classifier" | "summarizer" | "risk" | "report" | "reply_draft" | "memory" | "chat";
+
 export interface Organization {
   id: string;
   name: string;

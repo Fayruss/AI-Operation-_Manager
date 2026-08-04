@@ -2,7 +2,7 @@ import "server-only";
 import { AgentRunRepository } from "@/lib/repositories/agent-run-repository";
 import { TaskRepository } from "@/lib/repositories/task-repository";
 import { OrganizationRepository } from "@/lib/repositories/organization-repository";
-import type { AgentName } from "@ai-ops/database";
+import type { AgentName } from "@ai-ops/types";
 
 /**
  * SAD §13.4 Time-Saved/ROI Metrics — "Computed, not estimated by an LLM —
