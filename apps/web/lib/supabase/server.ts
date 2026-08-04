@@ -1,5 +1,9 @@
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { createServerClient } from "@supabase/ssr";
+import type { CookieOptions, SetAllCookies } from "@supabase/ssr";
 import { cookies } from "next/headers";
+
+/** The cookie batch `setAll` receives — `createServerClient` accepts a union of cookie-method shapes, so this parameter isn't contextually typed. */
+type CookiesToSet = Parameters<SetAllCookies>[0];
 
 /**
  * Server-side Supabase client for Server Components/Route Handlers/Server
@@ -17,7 +21,7 @@ export async function createClient() {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: CookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }: { name: string; value: string; options: CookieOptions }) =>
               cookieStore.set(name, value, options)

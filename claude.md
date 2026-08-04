@@ -325,3 +325,28 @@ When requested to report changes:
 - Explain the reason briefly.
 - Confirm build status.
 - Mention any remaining warnings separately from build failures.
+
+## Windows Environment
+
+This repository is developed on Windows.
+
+Always generate PowerShell commands.
+
+Never generate:
+
+- Bash
+- Git Bash
+- WSL
+- Linux paths
+- /dev/null
+- &&
+
+Use:
+
+- Set-Location
+- ;
+- Out-Null
+- $null
+- PowerShell cmdlets
+
+before executing any shell command.

@@ -1,4 +1,15 @@
 /** Centralized query key factory (SAD §6.4) — keeps cache invalidation consistent across hooks. */
+
+/**
+ * Filter bags are declared as plain `interface`s (EmailFilters,
+ * TaskFilters, …). Interfaces get no implicit index signature, so they
+ * aren't assignable to `Record<string, …>`. Each `list`/`search` factory
+ * therefore takes the bag as a generic constrained to string-valued
+ * optional fields, letting those interfaces be passed directly rather than
+ * cast at each call site.
+ */
+type QueryFilters<T> = { [K in keyof T]: string | undefined };
+
 export const queryKeys = {
   projects: {
     all: ["projects"] as const,
@@ -9,17 +20,17 @@ export const queryKeys = {
   },
   tasks: {
     all: ["tasks"] as const,
-    list: (filters: Record<string, string | undefined>) => ["tasks", filters] as const,
+    list: <T extends QueryFilters<T>>(filters: T) => ["tasks", filters] as const,
     detail: (id: string) => ["tasks", id] as const
   },
   users: {
     all: ["users"] as const
   },
   auditLog: {
-    list: (filters: Record<string, string | undefined>) => ["audit-log", filters] as const
+    list: <T extends QueryFilters<T>>(filters: T) => ["audit-log", filters] as const
   },
   emails: {
-    list: (filters: Record<string, string | undefined>) => ["emails", filters] as const,
+    list: <T extends QueryFilters<T>>(filters: T) => ["emails", filters] as const,
     detail: (id: string) => ["emails", id] as const
   },
   emailAccounts: {
@@ -30,7 +41,7 @@ export const queryKeys = {
     detail: (id: string) => ["meetings", id] as const
   },
   riskSignals: {
-    list: (filters: Record<string, string | undefined>) => ["risk-signals", filters] as const
+    list: <T extends QueryFilters<T>>(filters: T) => ["risk-signals", filters] as const
   },
   reports: {
     all: ["reports"] as const,
@@ -38,10 +49,10 @@ export const queryKeys = {
   },
   memory: {
     all: ["memory"] as const,
-    list: (filters: Record<string, string | undefined>) => ["memory", filters] as const,
+    list: <T extends QueryFilters<T>>(filters: T) => ["memory", filters] as const,
     detail: (id: string) => ["memory", id] as const,
     related: (id: string) => ["memory", id, "related"] as const,
-    search: (query: string, filters: Record<string, string | undefined>) => ["memory", "search", query, filters] as const,
+    search: <T extends QueryFilters<T>>(query: string, filters: T) => ["memory", "search", query, filters] as const,
     stats: () => ["memory", "stats"] as const
   },
   chat: {

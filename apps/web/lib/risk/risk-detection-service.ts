@@ -62,7 +62,13 @@ export async function runRiskScanForOrg(orgId: string): Promise<RiskScanResult> 
   ]);
 
   interface PendingSignal {
-    input: CreateRiskSignalInput;
+    /**
+     * `signalType` is narrowed to the three types this scan's detectors
+     * actually emit — `CreateRiskSignalInput` carries the full Prisma enum
+     * (including `sentiment_negative`, produced by the email pipeline, not
+     * here), which isn't assignable to the Risk Agent's candidate contract.
+     */
+    input: CreateRiskSignalInput & { signalType: RiskCandidateInput["signalType"] };
     entityLabel: string;
     assigneeId: string | null;
   }

@@ -465,17 +465,19 @@ export const TaskRepository = {
       select: { assigneeId: true, board: { select: { projectId: true } } }
     });
 
-    const counts = new Map<string, number>();
+    const counts = new Map<string, { assigneeId: string; projectId: string; openTaskCount: number }>();
     for (const row of rows) {
       if (!row.assigneeId) continue;
       const key = `${row.assigneeId}:${row.board.projectId}`;
-      counts.set(key, (counts.get(key) ?? 0) + 1);
+      const existing = counts.get(key);
+      if (existing) {
+        existing.openTaskCount += 1;
+      } else {
+        counts.set(key, { assigneeId: row.assigneeId, projectId: row.board.projectId, openTaskCount: 1 });
+      }
     }
 
-    return Array.from(counts.entries()).map(([key, openTaskCount]) => {
-      const [assigneeId, projectId] = key.split(":");
-      return { assigneeId, projectId, openTaskCount };
-    });
+    return Array.from(counts.values());
   },
 
   async countAutomatedSince(orgId: string, since: Date): Promise<number> {

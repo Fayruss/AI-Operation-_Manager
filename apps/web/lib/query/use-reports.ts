@@ -1,11 +1,21 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { UseQueryResult } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query/keys";
 import type { Page, ReportDto } from "@/lib/api/dto";
 import type { GenerateReportInput } from "@/lib/validation/report";
 
+/**
+ * Overloaded so a caller that supplies `initialData` (the Server Component
+ * hand-off, e.g. ReportsList) gets a non-optional `data` — TanStack only
+ * narrows `data` when `initialData` is statically known to be defined.
+ */
+export function useReports(
+  initialData: Page<ReportDto>
+): UseQueryResult<Page<ReportDto>, Error> & { data: Page<ReportDto> };
+export function useReports(initialData?: Page<ReportDto>): UseQueryResult<Page<ReportDto>, Error>;
 export function useReports(initialData?: Page<ReportDto>) {
   return useQuery({
     queryKey: queryKeys.reports.all,

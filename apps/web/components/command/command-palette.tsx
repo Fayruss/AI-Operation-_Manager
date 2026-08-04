@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { Route } from "next";
 import {
   Calendar,
   FileBarChart,
@@ -15,6 +16,7 @@ import {
   Sparkles,
   Trello
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
 import { useGenerateReport } from "@/lib/query/use-reports";
@@ -35,7 +37,7 @@ import { useChatStore } from "@/stores/chat-store";
  * command that doesn't actually do anything would violate CLAUDE.md's
  * "no placeholder implementations."
  */
-const NAV_COMMANDS = [
+const NAV_COMMANDS: ReadonlyArray<{ label: string; href: Route; icon: LucideIcon }> = [
   { label: "Executive Dashboard", href: "/app/dashboard", icon: LayoutDashboard },
   { label: "Email Intelligence", href: "/app/emails", icon: Mail },
   { label: "Projects", href: "/app/projects", icon: Trello },

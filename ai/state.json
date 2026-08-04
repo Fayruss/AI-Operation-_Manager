@@ -1,7 +1,7 @@
 {
   "phase": 9,
-  "status": "build stabilization",
-  "last_updated": "2026-08-03",
+  "status": "build succeeds",
+  "last_updated": "2026-08-04",
 
   "completed": [
     "Invalid Prisma comments removed",
@@ -10,19 +10,31 @@
     "React upgraded to stable release",
     "React types updated",
     "Route handlers updated",
-    "Next.js compatibility fixes applied"
+    "Next.js compatibility fixes applied",
+    "ESLint preset resolution fixed (relative path form; ESLint 8 treats extends entries as config names)",
+    "eslint-config-prettier declared in packages/config (was referenced but never installed)",
+    "typedRoutes errors fixed via Route type on nav-config and command-palette",
+    "Zod request payload types switched from z.infer to z.input",
+    "Query key factories made generic; redundant cast removed",
+    "useReports overloaded for defined initialData",
+    "task-repository workload accumulator restructured",
+    "risk-detection-service signalType narrowed to detector types",
+    "Supabase setAll cookie params typed without any"
   ],
 
-  "current_blocker": {
-    "category": "ESLint",
-    "issue": "Cannot resolve @ai-ops/config/eslint-preset.js"
-  },
+  "current_blocker": null,
 
   "build": {
     "install": true,
     "prisma_generate": true,
-    "build": false
+    "build": true,
+    "lint": true,
+    "typecheck": true
   },
 
-  "resume_from": "Run pnpm build and continue fixing remaining build failures."
+  "warnings": [
+    "pnpm install reports pre-existing peer-dependency warnings: next@15.0.0 and next-themes@0.3.0 declare peer ranges predating React 19.0.0 stable. Warnings only; install and build both pass. Not resolved because it would require a dependency upgrade."
+  ],
+
+  "resume_from": "Build target is met (install, prisma:generate, build all pass; lint and tsc clean). Resume feature work per the Phase 9 plan."
 }

@@ -10,13 +10,15 @@ import {
   Trello
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import type { Route } from "next";
 import type { NavItemKey } from "@ai-ops/types";
 
 /** SAD §6.1 Page Map — the seven dashboards + Settings, in nav order. */
 export interface NavItem {
   key: NavItemKey;
   label: string;
-  href: string;
+  /** Typed against `experimental.typedRoutes` so nav targets are checked at build time. */
+  href: Route;
   icon: LucideIcon;
 }
 

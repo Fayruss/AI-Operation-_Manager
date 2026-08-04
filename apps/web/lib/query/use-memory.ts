@@ -35,7 +35,7 @@ function toSearchParams(filters: MemoryFilters, cursor?: string | null): string 
  */
 export function useMemoryEntries(filters: MemoryFilters = {}, initialData?: Page<MemoryEntryDto>) {
   return useInfiniteQuery({
-    queryKey: queryKeys.memory.list(filters as Record<string, string | undefined>),
+    queryKey: queryKeys.memory.list(filters),
     queryFn: ({ pageParam }: { pageParam: string | null }) =>
       apiClient.get<Page<MemoryEntryDto>>(`/memory${toSearchParams(filters, pageParam)}`),
     initialPageParam: null as string | null,

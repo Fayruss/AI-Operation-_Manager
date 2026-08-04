@@ -23,7 +23,8 @@ export const searchMemorySchema = z.object({
   minImportance: z.number().min(0).max(1).optional(),
   topK: z.number().int().min(1).max(50).default(10)
 });
-export type SearchMemoryInput = z.infer<typeof searchMemorySchema>;
+/** Request payload type: `z.input` (not `z.infer`) so callers may omit `topK`, which carries a `.default()` applied by `parse` server-side. */
+export type SearchMemoryInput = z.input<typeof searchMemorySchema>;
 
 /** POST /api/v1/memory (manual entry) — Memory Explorer's "add a note" affordance and any future direct API integration. Distinct from the automatic consolidation path (memory-consolidation-service.ts), which writes with `sourceType` values the consolidation logic controls, not user input. */
 export const createMemoryEntrySchema = z.object({
@@ -33,7 +34,8 @@ export const createMemoryEntrySchema = z.object({
   importance: z.number().min(0).max(1).default(0.5),
   metadata: z.record(z.unknown()).optional()
 });
-export type CreateMemoryEntryInput = z.infer<typeof createMemoryEntrySchema>;
+/** Request payload type: `z.input` (not `z.infer`) so callers may omit fields carrying a `.default()` — `entityId` and `importance` are filled in by `parse` server-side. */
+export type CreateMemoryEntryInput = z.input<typeof createMemoryEntrySchema>;
 
 /** POST /api/v1/memory/rebuild-embeddings — admin+ (Phase 7 requirement §7). Empty body triggers a rebuild of every stale/failed entry for the org; `entryIds` scopes it to specific entries (e.g. retrying a known failure from the Memory Explorer UI). */
 export const rebuildEmbeddingsSchema = z.object({
