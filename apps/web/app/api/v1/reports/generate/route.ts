@@ -1,4 +1,4 @@
-import { NextResponse, unstable_after as after } from "next/server";
+import { NextResponse, after } from "next/server";
 import { apiRoute } from "@/lib/api/handler";
 import { parseJsonBody } from "@/lib/api/request";
 import { checkRateLimit } from "@/lib/api/rate-limit";

@@ -427,3 +427,90 @@ Next action
 Re-deploy. If a further "no exported member" error appears despite
 `postinstall`, the cause is upstream of the type layer (install ordering or
 build command on the Vercel side), not the imports.
+
+---
+
+## 2026-08-05 — Next.js 15.5.22: `unstable_after` → stable `after`
+
+Trigger
+
+After the Next.js upgrade (commit `2ac0e08`, 15.0.0 → 15.5.22) the local
+build failed:
+
+```
+./app/api/v1/meetings/ingest/route.ts:1:37
+Module '"next/server"' has no exported member 'unstable_after'.
+```
+
+Why the API changed
+
+`after()` was introduced in Next.js 15.0 behind the `unstable_` prefix and
+the `experimental.after` config flag. It **stabilized in 15.1**: the export
+was renamed `unstable_after` → `after` and the config flag was dropped. The
+prefixed alias was kept for a deprecation window and **removed by 15.5**,
+which is why 15.0.0 → 15.5.22 broke it.
+
+Verified against the installed package rather than from memory:
+
+```
+node_modules/next/server.d.ts:16:   export { after } from 'next/dist/server/after'
+grep -c "unstable_after" node_modules/next/server.d.ts  →  0
+```
+
+Signature is unchanged, so this is a pure rename with no behavioural
+migration:
+
+```ts
+export declare function after<T>(task: AfterTask<T>): void;
+export type AfterTask<T = unknown> = Promise<T> | AfterCallback<T>;
+```
+
+Files modified (4)
+
+- `app/api/v1/reports/generate/route.ts`
+- `app/api/v1/webhooks/gmail/route.ts`
+- `app/api/v1/webhooks/outlook/route.ts`
+  → `unstable_after as after` → `after`. The alias is now redundant since
+  the export is already named `after`.
+- `app/api/v1/meetings/ingest/route.ts` → **was genuinely broken**: it
+  calls `after()` at line 72 for its fast-ack path but had **no import at
+  all** (`TS2304: Cannot find name 'after'`). Added the missing import.
+  This was masked because the other three files' errors surfaced first.
+
+Behaviour preserved exactly — only import lines changed (4 × 1 line, net
++4/−4). Every `after(async () => { ... })` call site, the immediate
+`NextResponse.json(...)` fast-ack, the in-callback failure audit logging
+(`email.ingestion_failed` / `meeting.ingestion_failed`), and the
+synchronous signature/validation audit paths are untouched.
+
+No `any`, no `@ts-ignore`, no casts, no suppressions.
+
+Also checked and confirmed clean
+
+- Repo-wide `unstable_after`: 0 occurrences; repo-wide `unstable_`: 0.
+- `next.config.mjs` has no `experimental.after` flag to remove (it would
+  now emit an unrecognized-option warning). No obsolete config remained.
+- `docs/` and other markdown: no stale references.
+- Doc comment in `webhooks/gmail/route.ts:11` already read "stable in
+  Next.js 15" — now accurate rather than aspirational.
+
+`pnpm-lock.yaml` also changed: `next@15.0.0` → `next@15.5.22`. The upgrade
+commit changed `package.json` without regenerating the lockfile; the
+`pnpm install` run during this work reconciled it. Legitimate and should be
+committed — a stale lockfile would have Vercel install 15.0.0 and
+reintroduce the error.
+
+Verification (all uncached)
+
+Next.js 15.5.22 (resolved for apps/web) · Prisma 5.x (`^5.19.0`, client
+v5.22.0)
+
+pnpm lint — no ESLint warnings or errors, exit 0
+pnpm test — 1 successful, exit 0
+tsc --noEmit — exit 0, zero TypeScript errors
+pnpm build --force — 1 successful, `0 cached`, 4m40s, exit 0
+
+Next action
+
+Commit (4 route files + lockfile) and re-deploy. This is the first state in
+this sequence where the tree is both type-clean and version-consistent.

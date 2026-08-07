@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse, unstable_after as after } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { EmailAccountRepository } from "@/lib/repositories/email-account-repository";
 import { ingestProviderMessage } from "@/lib/email/email-sync-service";
 import { writeAuditLog } from "@/lib/api/audit";

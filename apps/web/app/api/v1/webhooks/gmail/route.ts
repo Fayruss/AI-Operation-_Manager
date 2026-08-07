@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse, unstable_after as after } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { EmailAccountRepository } from "@/lib/repositories/email-account-repository";
 import { verifyWebhookSignature } from "@/lib/security/webhook";
 import { ingestLatestGmailMessage } from "@/lib/email/email-sync-service";
